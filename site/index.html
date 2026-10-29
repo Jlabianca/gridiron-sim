@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridiron Sim — NFL game simulator & prop projections</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark">◆</span> GRIDIRON SIM
+    <span class="sub" id="dataLine">loading data…</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
+    <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
+    <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
+  </nav>
+</header>
+
+<section class="picker">
+  <label>Week <select id="weekSel"></select></label>
+  <div id="gameList" class="games"></div>
+  <div class="custom">
+    <select id="awaySel"></select><span>@</span><select id="homeSel"></select>
+    <label class="chk"><input type="checkbox" id="neutralChk"> neutral site</label>
+  </div>
+</section>
+
+<main>
+  <!-- WATCH -->
+  <section id="tab-watch" class="pane active">
+    <div class="board">
+      <div class="score">
+        <div class="trow" id="rowAway"><i class="bar"></i><span class="abbr"></span><span class="pts">0</span></div>
+        <div class="trow" id="rowHome"><i class="bar"></i><span class="abbr"></span><span class="pts">0</span></div>
+      </div>
+      <div class="clockbox"><div id="qtr">1ST</div><div id="clock">15:00</div></div>
+      <div class="situation"><span id="dd">KICKOFF</span><span id="spot"></span><span id="poss"></span></div>
+    </div>
+
+    <div class="fieldwrap">
+      <svg id="field" viewBox="0 0 1200 300" preserveAspectRatio="none"></svg>
+      <div class="side">
+        <div class="drivebox mono" id="driveBox">DRIVE –</div>
+        <table class="line mono" id="lineScore"></table>
+      </div>
+    </div>
+
+    <div class="playbox">
+      <div class="badge" id="playerBadge"></div>
+      <div><div class="ptype mono" id="pType"></div><div class="pdesc" id="pDesc">Press play to start.</div></div>
+    </div>
+    <div class="strip" id="driveStrip"></div>
+
+    <div class="controls">
+      <button id="btnPlay" class="primary">▶ Play</button>
+      <button id="btnStep">Next play</button>
+      <button id="btnEnd">Skip to final</button>
+      <label>Speed <select id="speedSel"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="10">10×</option></select></label>
+      <button id="btnNew">New sim</button>
+      <span class="mono dim">seed <span id="seedLbl"></span></span>
+      <button id="btnShare" title="Copy a link to this exact simulated game">Copy link</button>
+    </div>
+
+    <div id="finalBox" class="final hidden"></div>
+    <p class="note mono">SIMULATED GAME · NOT A REAL GAME · EVERY NUMBER IS MODELLED · PLAY-BY-PLAY DATA: NFLVERSE (CC BY 4.0)</p>
+  </section>
+
+  <!-- PROJECTIONS -->
+  <section id="tab-proj" class="pane">
+    <div class="controls">
+      <label>Simulations <select id="nSel"><option>1000</option><option selected>5000</option><option>10000</option><option>20000</option></select></label>
+      <button id="btnRun" class="primary">Run simulations</button>
+      <div class="progress"><i id="prog"></i></div>
+      <span class="dim mono" id="runInfo"></span>
+    </div>
+    <div id="projOut" class="hidden">
+      <div class="cards" id="gameCards"></div>
+      <div class="charts">
+        <div><h3>Home margin distribution</h3><svg id="marginChart" viewBox="0 0 600 200"></svg></div>
+        <div><h3>Total points distribution</h3><svg id="totalChart" viewBox="0 0 600 200"></svg></div>
+      </div>
+      <div class="propbar">
+        <h3>Player props</h3>
+        <label>Stat <select id="statSel">
+          <option value="py">Passing yards</option><option value="pc">Completions</option><option value="ptd">Passing TDs</option><option value="pint">Interceptions</option>
+          <option value="ry" selected>Rushing yards</option><option value="ra">Rush attempts</option>
+          <option value="recy">Receiving yards</option><option value="rec">Receptions</option>
+          <option value="rry">Rush + rec yards</option><option value="td">Anytime TD</option><option value="pts">Kicker points</option>
+        </select></label>
+        <label>Team <select id="teamFilter"><option value="">Both</option></select></label>
+        <span class="dim">Type the sportsbook line to get the model's over probability and fair odds.</span>
+      </div>
+      <table class="props" id="propTable"></table>
+    </div>
+    <p class="note">Probabilities come from repeating the simulated game thousands of times. The model is a simple play-level simulation and has not been proven to beat the market — treat edges as leads to research, not as bets.</p>
+  </section>
+
+  <!-- ROSTER -->
+  <section id="tab-roster" class="pane">
+    <p class="dim">Players marked out by the injury report (Out/Doubtful), or no longer active on the roster, start unchecked. Toggle anyone in or out — their carries and targets are re-split among the rest. Changes apply to both tabs.</p>
+    <div class="rosters" id="rosters"></div>
+  </section>
+</main>
+
+<footer class="mono dim">
+  Data: <a href="https://github.com/nflverse" target="_blank" rel="noopener">nflverse</a> play-by-play, rosters &amp; injury reports (CC BY 4.0); schedule &amp; closing lines from nflverse/nfldata. Not affiliated with the NFL. For entertainment and research.
+</footer>
+
+<script src="js/sim.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

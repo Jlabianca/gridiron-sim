@@ -1,0 +1,4 @@
+data_raw/
+backtest/
+__pycache__/
+.DS_Store
