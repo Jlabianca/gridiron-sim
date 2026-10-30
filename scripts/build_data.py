@@ -139,7 +139,11 @@ def main():
     cur, prev = load(a.raw, a.season, a.week)
     cur, prev = add_flags(cur), add_flags(prev)
     through_week = int(cur.week.max())
-    target_week = a.week if a.week is not None else through_week + 1
+    if a.week is not None:
+        target_week = a.week
+    else:  # the earliest week that still has unplayed games (handles Thursday games mid-week)
+        left = games[(games.season == a.season) & (games.game_type == "REG") & games.home_score.isna()]
+        target_week = int(left.week.min()) if len(left) else through_week + 1
     print(f"season {a.season}: using weeks 1-{through_week}, building for week {target_week}")
 
     both = pd.concat([cur, prev], ignore_index=True)
