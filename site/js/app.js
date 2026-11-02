@@ -14,7 +14,8 @@
   let idx = -1, playing = false, timer = null, speed = 1;
   let projResult = null, projStale = true, worker = null;
   const lines = {}; // user-entered prop lines: key `${id}|${stat}`
-  let qbSel = { away: "", home: "" }; // "" = automatic (most recent starter who isn't ruled out)
+  let qbSel = { away: "", home: "" };
+  let legs = [], bookOdds = ""; // "" = automatic (most recent starter who isn't ruled out)
 
   // ---------------- boot ----------------
   fetch("data/model.json").then((r) => r.json()).then((m) => {
@@ -70,6 +71,7 @@
     $("awaySel").value = g.away; $("homeSel").value = g.home;
     outSet = new Set(NFLSim.defaultOut(model, [g.away, g.home]));
     qbSel = { away: "", home: "" };
+    legs = [];
     document.documentElement.style.setProperty("--away", col(g.away));
     document.documentElement.style.setProperty("--home", col(g.home));
     renderGames(); renderRoster(); renderWeather();
@@ -159,6 +161,7 @@
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
       document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "tab-" + t.dataset.tab));
       if (t.dataset.tab === "proj" && projStale) runProjections();
+      if (t.dataset.tab === "score") loadScorecard();
     }));
   }
 
@@ -176,6 +179,18 @@
     };
     $("btnRun").onclick = runProjections;
     $("statSel").onchange = $("teamFilter").onchange = renderProps;
+    $("legType").onchange = renderLegInputs;
+    $("legAdd").onclick = addLegFromForm;
+    $("propTable").addEventListener("click", (e) => {
+      const b = e.target.closest(".addleg"); if (!b) return;
+      const d = b.dataset;
+      addLeg(d.stat === "td" ? { type: "td", pid: d.pid } : { type: "prop", pid: d.pid, stat: d.stat, dir: d.dir, line: +d.line });
+    });
+    $("legTable").addEventListener("click", (e) => {
+      const b = e.target.closest(".rm"); if (!b) return;
+      legs.splice(+b.dataset.i, 1); renderParlay();
+    });
+    $("sgpCards").addEventListener("change", (e) => { if (e.target.id === "bookOdds") { bookOdds = e.target.value; renderParlay(); } });
   }
   function fromHash() {
     const m = location.hash.match(/^#([A-Z]{2,3})@([A-Z]{2,3})(?:\/(\d+))?/);
@@ -401,16 +416,7 @@
       worker.postMessage({ run: true, opts, n });
     } catch (err) { // no workers (e.g. file://): run on the main thread
       setTimeout(() => {
-        const agg = NFLSim.simulateMany(model, opts, n);
-        const players = {};
-        for (const id in agg.players) {
-          const p = agg.players[id], s = p.stats, d = {};
-          for (const k of ["py", "pc", "ptd", "pint", "ra", "ry", "rec", "recy", "pts"]) d[k] = Int16Array.from(s[k]).sort();
-          d.rry = Int16Array.from(s.ry.map((x, i) => x + s.recy[i])).sort();
-          d.td = Int16Array.from(s.rtd.map((x, i) => x + s.rectd[i])).sort();
-          players[id] = { id, name: p.name, short: p.short, pos: p.pos, team: p.team, d };
-        }
-        finish({ n: agg.n, away: agg.away, home: agg.home, wins: agg.wins, players });
+        finish(NFLSim.summarize(NFLSim.simulateMany(model, opts, n)));
       }, 30);
     }
   }
@@ -456,6 +462,8 @@
     $("teamFilter").innerHTML = `<option value="">Both</option><option>${A}</option><option>${H}</option>`;
     $("projOut").classList.remove("hidden");
     renderProps();
+    renderLegInputs();
+    renderParlay();
   }
 
   function hist(svg, data, lo, hi, mark, label) {
@@ -484,14 +492,14 @@
     const minMean = { py: 20, pc: 2, ptd: 0.05, pint: 0.05, ra: 1, ry: 5, rec: 0.5, recy: 5, rry: 5, td: 0.03, pts: 1 }[k];
     const rows = ps.map((p) => ({ p, d: p.d[k], m: meanOf(p.d[k]) })).filter((x) => x.m >= minMean).sort((a, b) => b.m - a.m);
     if (k === "td") {
-      $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Avg TDs</th><th>Anytime TD</th><th>Fair odds</th><th>2+ TDs</th></tr>` +
+      $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Avg TDs</th><th>Anytime TD</th><th>Fair odds</th><th>2+ TDs</th><th>Parlay</th></tr>` +
         rows.map(({ p, d, m }) => {
           const p1 = pOver(d, 0.5), p2 = pOver(d, 1.5);
-          return `<tr><td>${p.name}<span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td><td>${m.toFixed(2)}</td><td>${pct(p1)}</td><td>${american(p1)}</td><td>${pct(p2)}</td></tr>`;
+          return `<tr><td>${p.name}<span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td><td>${m.toFixed(2)}</td><td>${pct(p1)}</td><td>${american(p1)}</td><td>${pct(p2)}</td><td><button class="addleg" data-pid="${p.id}" data-stat="td" title="Add to parlay">+</button></td></tr>`;
         }).join("");
       return;
     }
-    $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Mean</th><th>Median</th><th>10th–90th</th><th>Line</th><th>Over</th><th>Under</th><th>Fair over</th><th>Fair under</th></tr>` +
+    $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Mean</th><th>Median</th><th>10th–90th</th><th>Line</th><th>Over</th><th>Under</th><th>Fair over</th><th>Fair under</th><th>Parlay</th></tr>` +
       rows.map(({ p, d, m }) => {
         const key = p.id + "|" + k;
         const med = quant(d, 0.5);
@@ -502,9 +510,202 @@
         return `<tr><td>${p.name}<span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td>
           <td>${m.toFixed(1)}</td><td>${med}</td><td>${quant(d, 0.1)}–${quant(d, 0.9)}</td>
           <td><input data-key="${key}" type="number" step="0.5" value="${line}"></td>
-          <td class="${cls && o >= 0.56 ? cls : ""}">${pct(o)}</td><td class="${cls && under >= 0.56 ? cls : ""}">${pct(under)}</td><td>${american(o)}</td><td>${american(under)}</td></tr>`;
+          <td class="${cls && o >= 0.56 ? cls : ""}">${pct(o)}</td><td class="${cls && under >= 0.56 ? cls : ""}">${pct(under)}</td><td>${american(o)}</td><td>${american(under)}</td>
+          <td><button class="addleg" data-pid="${p.id}" data-stat="${k}" data-dir="over" data-line="${line}" title="Add over to parlay">+O</button><button class="addleg" data-pid="${p.id}" data-stat="${k}" data-dir="under" data-line="${line}" title="Add under to parlay">+U</button></td></tr>`;
       }).join("");
     $("propTable").querySelectorAll("input").forEach((inp) => (inp.onchange = () => { lines[inp.dataset.key] = +inp.value; renderProps(); }));
+  }
+
+  // ---------------- parlay builder ----------------
+  const STAT_NAMES = { py: "pass yds", pc: "completions", ptd: "pass TDs", pint: "INTs", ra: "rush att", ry: "rush yds", rec: "receptions", recy: "rec yds", rry: "rush+rec yds", pts: "kicker pts" };
+  function legPlayers() {
+    return Object.values(projResult.players).filter((p) => p.d.py[p.d.py.length - 1] > 0 || p.d.rry[p.d.rry.length - 1] > 0 || p.d.pts[p.d.pts.length - 1] > 0)
+      .sort((a, b) => (a.team === b.team ? 0 : a.team === cur.away ? -1 : 1) || meanOf(b.r.rry) + meanOf(b.r.py) - meanOf(a.r.rry) - meanOf(a.r.py));
+  }
+  function renderLegInputs() {
+    if (!projResult) return;
+    const t = $("legType").value, A = cur.away, H = cur.home;
+    const teamSel = `<select id="lgTeam"><option>${A}</option><option>${H}</option></select>`;
+    const dirSel = `<select id="lgDir"><option value="over">Over</option><option value="under">Under</option></select>`;
+    const line = (v) => `<input id="lgLine" type="number" step="0.5" value="${v}">`;
+    const sg = schedFor(A, H);
+    const plSel = () => `<select id="lgPid">${legPlayers().map((p) => `<option value="${p.id}">${p.team} · ${p.name} (${p.pos})</option>`).join("")}</select>`;
+    const statSel = `<select id="lgStat">${Object.entries(STAT_NAMES).map(([k, v]) => `<option value="${k}" ${k === "recy" ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+    $("legInputs").innerHTML = {
+      ml: teamSel,
+      spread: teamSel + line(sg && sg.spread != null ? -Math.abs(sg.spread) : -3.5),
+      total: dirSel + line(sg && sg.total != null ? sg.total : 44.5),
+      teamtotal: teamSel + dirSel + line(21.5),
+      prop: plSel() + statSel + dirSel + line(49.5),
+      td: plSel(),
+    }[t];
+  }
+  function addLegFromForm() {
+    const t = $("legType").value, v = (id) => ($(id) ? $(id).value : null);
+    const leg = { type: t };
+    if ($("lgTeam")) leg.team = v("lgTeam");
+    if ($("lgDir")) leg.dir = v("lgDir");
+    if ($("lgLine")) leg.line = +v("lgLine");
+    if ($("lgPid")) leg.pid = v("lgPid");
+    if ($("lgStat")) leg.stat = v("lgStat");
+    addLeg(leg);
+  }
+  function addLeg(leg) {
+    if (legs.length >= 10) return;
+    legs.push(leg); renderParlay();
+    document.querySelector(".sgp").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function legLabel(l) {
+    const P = (id) => (projResult.players[id] || { name: id }).name;
+    const sgn = (x) => (x > 0 ? "+" + x : "" + x);
+    switch (l.type) {
+      case "ml": return `${l.team} to win`;
+      case "spread": return `${l.team} ${sgn(l.line)}`;
+      case "total": return `Game ${l.dir} ${l.line}`;
+      case "teamtotal": return `${l.team} ${l.dir} ${l.line} pts`;
+      case "prop": return `${P(l.pid)} ${l.dir} ${l.line} ${STAT_NAMES[l.stat]}`;
+      case "td": return `${P(l.pid)} anytime TD`;
+    }
+  }
+  function legHits(l) {               // 1/0 per simulated game, in sim order
+    const r = projResult, n = r.n, out = new Uint8Array(n);
+    const pts = (team, i) => (team === cur.home ? r.home[i] : r.away[i]);
+    const opp = (team) => (team === cur.home ? cur.away : cur.home);
+    const pl = r.players[l.pid];
+    for (let i = 0; i < n; i++) {
+      let h = false;
+      switch (l.type) {
+        case "ml": h = pts(l.team, i) > pts(opp(l.team), i); break;
+        case "spread": h = pts(l.team, i) - pts(opp(l.team), i) + l.line > 0; break;
+        case "total": { const t = r.home[i] + r.away[i]; h = l.dir === "over" ? t > l.line : t < l.line; break; }
+        case "teamtotal": { const t = pts(l.team, i); h = l.dir === "over" ? t > l.line : t < l.line; break; }
+        case "prop": { const v = pl ? pl.r[l.stat][i] : 0; h = l.dir === "over" ? v > l.line : v < l.line; break; }
+        case "td": h = pl ? pl.r.td[i] >= 1 : false; break;
+      }
+      out[i] = h ? 1 : 0;
+    }
+    return out;
+  }
+  function decimalFromAmerican(a) { a = +a; if (!a) return null; return a > 0 ? 1 + a / 100 : 1 + 100 / -a; }
+  function renderParlay() {
+    if (!projResult) return;
+    const n = projResult.n;
+    if (!legs.length) { $("legTable").innerHTML = ""; $("sgpCards").innerHTML = `<div class="card"><div class="k">No legs yet</div><div class="s">Add 2+ legs to price a parlay</div></div>`; return; }
+    const hits = legs.map(legHits);
+    const probs = hits.map((h) => h.reduce((a, b) => a + b, 0) / n);
+    let all = 0;
+    for (let i = 0; i < n; i++) { let ok = 1; for (const h of hits) if (!h[i]) { ok = 0; break; } all += ok; }
+    const joint = all / n, indep = probs.reduce((a, b) => a * b, 1);
+    $("legTable").innerHTML = `<tr><th>Leg</th><th></th><th>Hit %</th><th>Fair odds</th><th></th></tr>` +
+      legs.map((l, i) => `<tr><td>${legLabel(l)}</td><td></td><td>${pct(probs[i])}</td><td>${american(probs[i])}</td><td><button class="rm" data-i="${i}" title="Remove leg">✕</button></td></tr>`).join("");
+    const corr = indep > 0 ? joint / indep : 0;
+    const dec = decimalFromAmerican(bookOdds);
+    const ev = dec ? joint * dec - 1 : null;
+    const cards = [
+      ["All legs hit", pct(joint), `${all.toLocaleString()} of ${n.toLocaleString()} sims`],
+      ["Fair parlay odds", american(joint), joint ? `decimal ${(1 / joint).toFixed(2)}` : "never hit"],
+      ["If legs were independent", pct(indep), `fair ${american(indep)}`],
+      ["Correlation", legs.length > 1 ? corr.toFixed(2) + "×" : "–", legs.length > 1 ? (corr > 1.05 ? "legs help each other" : corr < 0.95 ? "legs work against each other" : "roughly independent") : "add another leg"],
+    ];
+    $("sgpCards").innerHTML = cards.map(([k, v, s]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("") +
+      `<div class="card"><div class="k">Book's parlay odds</div><input id="bookOdds" type="text" placeholder="+450" value="${bookOdds}">
+        <div class="s ${ev == null ? "" : ev > 0 ? "ev-pos" : "ev-neg"}">${ev == null ? "enter odds to see expected value" : `model EV ${ev > 0 ? "+" : ""}${(ev * 100).toFixed(1)}% per $1`}</div></div>`;
+  }
+
+  // ---------------- scorecard ----------------
+  let scHist = null;
+  function loadScorecard() {
+    if (scHist) return renderScorecard();
+    fetch("data/history.json?" + Date.now()).then((r) => r.json()).then((h) => {
+      scHist = h;
+      const weeks = [...new Set(Object.values(h.games).map((g) => g.week))].sort((a, b) => a - b);
+      $("scWeek").innerHTML = `<option value="">All</option>` + weeks.map((w) => `<option>${w}</option>`).join("");
+      $("scFilter").onchange = $("scWeek").onchange = renderScorecard;
+      renderScorecard();
+    }).catch(() => { $("scCards").innerHTML = `<div class="card"><div class="k">No history yet</div><div class="s">It fills in after the first daily update.</div></div>`; });
+  }
+  function grade(g) {
+    const m = g.home_score - g.away_score, t = g.home_score + g.away_score, out = { m, t };
+    out.su = m === 0 ? 0 : (g.p_home > 0.5) === (m > 0) ? 1 : -1;
+    out.suMkt = m === 0 || g.spread == null || g.spread === 0 ? null : (g.spread > 0) === (m > 0) ? 1 : -1;
+    if (g.spread != null && g.p_home_cover != null) {
+      out.atsSide = g.p_home_cover >= 0.5 ? "home" : "away";
+      out.atsP = Math.max(g.p_home_cover, 1 - g.p_home_cover);
+      const r = m - g.spread; out.ats = r === 0 ? 0 : (r > 0) === (out.atsSide === "home") ? 1 : -1;
+    }
+    if (g.total != null && g.p_over != null) {
+      out.ouSide = g.p_over >= 0.5 ? "over" : "under";
+      out.ouP = Math.max(g.p_over, 1 - g.p_over);
+      const r = t - g.total; out.ou = r === 0 ? 0 : (r > 0) === (out.ouSide === "over") ? 1 : -1;
+    }
+    if (g.home_ml && g.away_ml && m !== 0) {
+      const ip = (x) => (x < 0 ? -x / (-x + 100) : 100 / (x + 100));
+      const mkt = ip(g.home_ml) / (ip(g.home_ml) + ip(g.away_ml)), y = m > 0 ? 1 : 0;
+      out.brier = (g.p_home - y) ** 2; out.brierMkt = (mkt - y) ** 2;
+    }
+    return out;
+  }
+  const units = (r) => (r > 0 ? 0.9091 : r < 0 ? -1 : 0);
+  function rec(list, key) {
+    const w = list.filter((x) => x[key] === 1).length, l = list.filter((x) => x[key] === -1).length, p = list.filter((x) => x[key] === 0).length;
+    const u = list.reduce((a, x) => a + (x[key] == null ? 0 : units(x[key])), 0);
+    return { w, l, p, u, pct: w + l ? w / (w + l) : 0, txt: `${w}–${l}${p ? "–" + p : ""}` };
+  }
+  function renderScorecard() {
+    const f = $("scFilter").value, wk = $("scWeek").value;
+    const all = Object.values(scHist.games).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const sel = all.filter((g) => (!wk || g.week === +wk) && (f === "all" || (f === "live" ? !g.backfill : g.backfill)));
+    const done = sel.filter((g) => g.final).map((g) => Object.assign({ g }, grade(g)));
+    const up = sel.filter((g) => !g.final);
+    const su = rec(done, "su"), suM = rec(done, "suMkt"), ats = rec(done, "ats"), ou = rec(done, "ou");
+    const strong = done.map((x) => ({ ats: x.atsP >= 0.55 ? x.ats : null, ou: x.ouP >= 0.55 ? x.ou : null }));
+    const sA = rec(strong, "ats"), sO = rec(strong, "ou");
+    const br = done.filter((x) => x.brier != null);
+    const bM = br.reduce((a, x) => a + x.brier, 0) / (br.length || 1), bK = br.reduce((a, x) => a + x.brierMkt, 0) / (br.length || 1);
+    const uTxt = (u) => (u >= 0 ? "+" : "−") + Math.abs(u).toFixed(2) + "u";
+    const cls = (u) => (u > 0 ? "good" : u < 0 ? "bad" : "");
+    const cards = [
+      ["Picked the winner", `${(su.pct * 100).toFixed(0)}%`, `${su.txt} · market favorites ${(suM.pct * 100).toFixed(0)}%`, ""],
+      ["Against the spread", ats.txt, `${(ats.pct * 100).toFixed(1)}% · ${uTxt(ats.u)}`, cls(ats.u)],
+      ["Totals (over/under)", ou.txt, `${(ou.pct * 100).toFixed(1)}% · ${uTxt(ou.u)}`, cls(ou.u)],
+      ["Strong picks (55%+)", `${sA.w + sO.w}–${sA.l + sO.l}`, `ATS ${sA.txt}, totals ${sO.txt} · ${uTxt(sA.u + sO.u)}`, cls(sA.u + sO.u)],
+      ["Win-prob accuracy", bM.toFixed(3), `Brier score, lower is better · market ${bK.toFixed(3)}`, bM <= bK ? "good" : "bad"],
+    ];
+    $("scCards").innerHTML = cards.map(([k, v, s, c]) => `<div class="card"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`).join("");
+
+    // cumulative units chart
+    let cum = 0; const pts = [0];
+    for (const x of done) { cum += (x.ats == null ? 0 : units(x.ats)) + (x.ou == null ? 0 : units(x.ou)); pts.push(cum); }
+    const W = 1000, H = 220, pad = 28, lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = hi - lo || 1;
+    const X = (i) => pad + (i / Math.max(1, pts.length - 1)) * (W - 2 * pad), Y = (v) => H - pad - ((v - lo) / span) * (H - 2 * pad);
+    const path = pts.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+    $("scChart").innerHTML = `<line x1="${pad}" x2="${W - pad}" y1="${Y(0)}" y2="${Y(0)}" stroke="#33475c" stroke-dasharray="4 4"/>
+      <path d="${path}" fill="none" stroke="${cum >= 0 ? "#3ecf8e" : "#ef5b5b"}" stroke-width="2.5"/>
+      <text x="${W - pad}" y="${Y(cum) - 8}" fill="#e8eef5" font-family="monospace" font-size="13" text-anchor="end">${uTxt(cum)}</text>
+      <text x="${pad}" y="${H - 6}" fill="#7d8ea1" font-family="monospace" font-size="11">${done.length} games</text>
+      <text x="4" y="${Y(hi) + 4}" fill="#7d8ea1" font-family="monospace" font-size="11">${hi.toFixed(1)}</text><text x="4" y="${Y(lo) + 4}" fill="#7d8ea1" font-family="monospace" font-size="11">${lo.toFixed(1)}</text>`;
+
+    const res = (r) => (r == null ? "" : r > 0 ? "ok" : r < 0 ? "no" : "push");
+    const mark = (r) => (r == null ? "" : r > 0 ? " ✓" : r < 0 ? " ✗" : " push");
+    const fmtSpread = (g, side) => { const s = side === "home" ? -g.spread : g.spread; return `${g[side]} ${s > 0 ? "+" + s : s}`; };
+    const rowsDone = done.slice().reverse().map((x) => {
+      const g = x.g, fav = g.p_home >= 0.5 ? g.home : g.away, fp = Math.max(g.p_home, 1 - g.p_home);
+      return `<tr><td>${g.week}</td><td>${g.away} @ ${g.home}${g.backfill ? '<span class="bf">backfill</span>' : ""}</td>
+        <td>${g.away_score}–${g.home_score}</td>
+        <td class="${res(x.su)}">${fav} ${(fp * 100).toFixed(0)}%${mark(x.su)}</td>
+        <td>${(g.total_proj / 2 - g.margin / 2).toFixed(1)}–${(g.total_proj / 2 + g.margin / 2).toFixed(1)}</td>
+        <td class="${res(x.ats)}">${x.atsSide ? fmtSpread(g, x.atsSide) + ` (${(x.atsP * 100).toFixed(0)}%)` + mark(x.ats) : "–"}</td>
+        <td class="${res(x.ou)}">${x.ouSide ? `${x.ouSide === "over" ? "O" : "U"} ${g.total} (${(x.ouP * 100).toFixed(0)}%)` + mark(x.ou) : "–"}</td></tr>`;
+    }).join("");
+    const rowsUp = up.map((g) => {
+      const fav = g.p_home >= 0.5 ? g.home : g.away, fp = Math.max(g.p_home, 1 - g.p_home);
+      const aS = g.p_home_cover >= 0.5 ? "home" : "away", aP = Math.max(g.p_home_cover, 1 - g.p_home_cover);
+      const oS = g.p_over >= 0.5 ? "O" : "U", oP = Math.max(g.p_over, 1 - g.p_over);
+      return `<tr><td>${g.week}</td><td>${g.away} @ ${g.home} <span class="up">upcoming</span></td><td>–</td><td>${fav} ${(fp * 100).toFixed(0)}%</td>
+        <td>${(g.total_proj / 2 - g.margin / 2).toFixed(1)}–${(g.total_proj / 2 + g.margin / 2).toFixed(1)}</td>
+        <td>${g.spread != null ? fmtSpread(g, aS) + ` (${(aP * 100).toFixed(0)}%)` : "–"}</td><td>${g.total != null ? `${oS} ${g.total} (${(oP * 100).toFixed(0)}%)` : "–"}</td></tr>`;
+    }).join("");
+    $("scTable").innerHTML = `<tr><th>Wk</th><th>Game</th><th>Final</th><th>Model winner</th><th>Proj. score</th><th>Spread pick</th><th>Total pick</th></tr>` + rowsUp + rowsDone;
   }
 
   // ---------------- roster ----------------

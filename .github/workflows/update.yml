@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -37,6 +37,13 @@ jobs:
           grep "^weather:" build.log | sed 's/^/::notice title=Forecasts::/'
       - name: Calibrate clock and scoring
         run: node scripts/calibrate.js site/data/model.json
+      - name: Update scorecard (save pre-game projections, grade finals)
+        run: |
+          node scripts/scorecard.js site/data/model.json site/data/history.json
+          git config user.name "gridiron-sim bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data/history.json
+          git diff --cached --quiet || (git commit -m "Scorecard update $(date -u +%Y-%m-%d)" && git pull --rebase -X theirs && git push)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

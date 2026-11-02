@@ -580,7 +580,23 @@
     return agg;
   }
 
-  const api = { simulateGame, simulateMany, mulberry32, defaultOut };
+  // compact per-player results: d = sorted (for quantiles/over %), r = per-sim in sim order (for parlays)
+  const SUM_KEYS = ["py", "pc", "ptd", "pint", "ra", "ry", "rec", "recy", "pts"];
+  function summarize(agg) {
+    const players = {};
+    for (const id in agg.players) {
+      const p = agg.players[id], s = p.stats, n = agg.n;
+      const out = { id, name: p.name, short: p.short, pos: p.pos, team: p.team, d: {}, r: {} };
+      for (const k of SUM_KEYS) out.r[k] = Int16Array.from(s[k]);
+      out.r.rry = new Int16Array(n); out.r.td = new Int16Array(n);
+      for (let i = 0; i < n; i++) { out.r.rry[i] = s.ry[i] + s.recy[i]; out.r.td[i] = s.rtd[i] + s.rectd[i]; }
+      for (const k in out.r) out.d[k] = Int16Array.from(out.r[k]).sort();
+      players[id] = out;
+    }
+    return { n: agg.n, away: agg.away, home: agg.home, wins: agg.wins, players };
+  }
+
+  const api = { simulateGame, simulateMany, summarize, mulberry32, defaultOut };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NFLSim = api;
 })(typeof self !== "undefined" ? self : this);

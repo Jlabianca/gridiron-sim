@@ -568,6 +568,8 @@ def main():
                           home_score=None if pd.isna(x.home_score) else int(x.home_score),
                           spread=None if pd.isna(x.spread_line) else float(x.spread_line),
                           total=None if pd.isna(x.total_line) else float(x.total_line),
+                          away_ml=None if pd.isna(x.away_moneyline) else int(x.away_moneyline),
+                          home_ml=None if pd.isna(x.home_moneyline) else int(x.home_moneyline),
                           stadium=x.stadium if isinstance(x.stadium, str) else "", weather=wthr))
     print(f"weather: {n_fc} forecasts fetched, {n_fc_fail} failed")
 

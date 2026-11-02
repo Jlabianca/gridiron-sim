@@ -156,3 +156,26 @@ footer { padding: 18px 22px 30px; font-size: 11px; border-top: 1px solid var(--l
   .picker { flex-direction: column; align-items: stretch; }
   .games button { flex: 1 1 46%; }
 }
+
+/* parlay builder */
+.sgp { margin-top: 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.sgp h3 { margin: 0 0 4px; font: 600 13px var(--mono); letter-spacing: .08em; color: var(--accent); text-transform: uppercase; }
+.sgp p { margin: 0 0 10px; font-size: 13px; }
+.legadd { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.legadd input { width: 80px; }
+.legs td:first-child { white-space: normal; }
+.legs .rm { padding: 2px 8px; color: var(--bad); }
+.addleg { padding: 2px 6px; font: 11px var(--mono); margin-left: 3px; }
+.sgp .cards { margin-top: 10px; }
+.card input { width: 90px; margin-top: 4px; }
+.ev-pos { color: var(--good) !important; } .ev-neg { color: var(--bad) !important; }
+
+/* scorecard */
+.scorehead h2 { margin: 0 0 4px; font: 600 18px var(--mono); }
+.scorehead p { max-width: 900px; margin: 0; font-size: 13px; }
+.charts.one { grid-template-columns: 1fr; }
+.charts.one svg { height: 200px; }
+table.sc td.ok { color: var(--good); } table.sc td.no { color: var(--bad); } table.sc td.push { color: var(--dim); }
+table.sc .bf { font-size: 10px; color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+table.sc .up { color: var(--accent); font-size: 11px; }
+.card .v.good { color: var(--good); } .card .v.bad { color: var(--bad); }

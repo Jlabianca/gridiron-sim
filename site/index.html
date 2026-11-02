@@ -16,6 +16,7 @@
     <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
     <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
+    <button class="tab" data-tab="score" role="tab">Scorecard</button>
   </nav>
 </header>
 
@@ -96,8 +97,39 @@
         <span class="dim">Type the sportsbook line to get the model's over probability and fair odds.</span>
       </div>
       <table class="props" id="propTable"></table>
+
+      <div class="sgp">
+        <h3>Same-game parlay builder</h3>
+        <p class="dim">Add legs below, or with the <b>+O</b> / <b>+U</b> / <b>+</b> buttons in the prop table. The model counts how often <i>every</i> leg hits in the same simulated game, so legs that go together (a team winning and its running back going over) are priced as a combination instead of being multiplied as if they were independent.</p>
+        <div class="legadd">
+          <select id="legType">
+            <option value="ml">Moneyline</option><option value="spread">Spread</option><option value="total">Game total</option>
+            <option value="teamtotal">Team total</option><option value="prop" selected>Player prop</option><option value="td">Anytime TD</option>
+          </select>
+          <span id="legInputs"></span>
+          <button id="legAdd" class="primary">Add leg</button>
+        </div>
+        <table class="props legs" id="legTable"></table>
+        <div class="cards" id="sgpCards"></div>
+      </div>
     </div>
     <p class="note">Probabilities come from repeating the simulated game thousands of times. The model is a simple play-level simulation and has not been proven to beat the market — treat edges as leads to research, not as bets.</p>
+  </section>
+
+  <!-- SCORECARD -->
+  <section id="tab-score" class="pane">
+    <div class="scorehead">
+      <h2>How has the model done?</h2>
+      <p class="dim">Every game's projection is saved before kickoff and graded once the final score is in. Picks are the model's side against the closing spread and total, at standard −110 pricing (you need 52.4% to break even). "Strong" means the model gave its side at least 55%.</p>
+      <div class="controls">
+        <label>Show <select id="scFilter"><option value="all">All graded games</option><option value="live">Live picks only</option><option value="backfill">Backfilled only</option></select></label>
+        <label>Week <select id="scWeek"></select></label>
+      </div>
+    </div>
+    <div class="cards" id="scCards"></div>
+    <div class="charts one"><div><h3>Cumulative units (ATS + totals, 1 unit per pick at −110)</h3><svg id="scChart" viewBox="0 0 1000 220"></svg></div></div>
+    <table class="props sc" id="scTable"></table>
+    <p class="note">Backfilled games (weeks before the scorecard existed) were projected with models rebuilt using only the data available before that week. Live picks are snapshots saved by the daily update before kickoff.</p>
   </section>
 
   <!-- ROSTER -->
