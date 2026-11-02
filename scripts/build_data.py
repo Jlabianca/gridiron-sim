@@ -121,6 +121,61 @@ def game_weights(d, team_col, half_life, base=1.0):
     return out
 
 
+def player_logs(d, out_teams):
+    """Per-game box score lines for every player in the model (current + prior season)."""
+    keep = {p["id"]: (t, p) for t, T in out_teams.items() for p in T["players"]}
+    sc = d[d.play_type.isin(["pass", "run"]) & (d.two_point_attempt != 1)]
+    rows = defaultdict(lambda: defaultdict(float))
+    def add(pid, gid, **kv):
+        if pid in keep:
+            r = rows[(pid, gid)]
+            for k, v in kv.items():
+                r[k] += float(v)
+    ps = sc[(sc.play_type == "pass") & sc.passer_player_id.notna()]
+    for pid, gid, sack, att, comp, yds, td, it in zip(ps.passer_player_id, ps.game_id, ps.sack, ps.pass_attempt, ps.complete_pass, ps.passing_yards.fillna(0), ps.pass_touchdown, ps.interception):
+        if sack == 1:
+            add(pid, gid, sk=1)
+        else:
+            add(pid, gid, pa=1, pc=comp, py=yds, ptd=td, pint=it)
+    ru = sc[(sc.play_type == "run") & sc.rusher_player_id.notna()]
+    for pid, gid, yds, td in zip(ru.rusher_player_id, ru.game_id, ru.rushing_yards.fillna(0), ru.rush_touchdown):
+        add(pid, gid, ra=1, ry=yds, rtd=td)
+    rc = sc[(sc.play_type == "pass") & sc.receiver_player_id.notna() & (sc.sack != 1)]
+    for pid, gid, comp, yds, td in zip(rc.receiver_player_id, rc.game_id, rc.complete_pass, rc.receiving_yards.fillna(0), rc.pass_touchdown):
+        add(pid, gid, tg=1, rec=comp, recy=yds, rectd=td)
+    # game context: who each player's team played, final score, team totals for shares
+    g = d.groupby("game_id").agg(season=("season", "first"), week=("week", "first"), home=("home_team", "first"), away=("away_team", "first"),
+                                 hs=("total_home_score", "max"), as_=("total_away_score", "max")).to_dict("index")
+    team_of = {}
+    for (pid, gid) in rows:
+        pass
+    pt = sc.groupby(["game_id", "posteam"]).agg(team_tg=("receiver_player_id", "count"), team_ra=("rush_attempt", "sum")).to_dict("index")
+    # which team the player was on in each game: the offense on his plays
+    side = {}
+    for df_, col_ in ((ps, "passer_player_id"), (ru, "rusher_player_id"), (rc, "receiver_player_id")):
+        for pid, gid, tm in zip(df_[col_], df_.game_id, df_.posteam):
+            side[(pid, gid)] = tm
+    out = {}
+    for (pid, gid), r in rows.items():
+        gi = g.get(gid); tm = side.get((pid, gid))
+        if gi is None or tm is None:
+            continue
+        home = tm == gi["home"]
+        tt = pt.get((gid, tm), {})
+        e = {"s": int(gi["season"]), "w": int(gi["week"]), "opp": gi["away"] if home else gi["home"], "h": 1 if home else 0, "tm": tm,
+             "pf": int(gi["hs"] if home else gi["as_"]), "pa_": int(gi["as_"] if home else gi["hs"]),
+             "ttg": int(tt.get("team_tg", 0)), "tra": int(tt.get("team_ra", 0))}
+        for k, v in r.items():
+            e[k] = int(round(v))
+        out.setdefault(pid, []).append(e)
+    res = {}
+    for pid, log in out.items():
+        t, p = keep[pid]
+        log.sort(key=lambda e: (e["s"], e["w"]))
+        res[pid] = {"name": p["name"], "team": t, "pos": p["pos"], "status": p.get("status", ""), "log": log}
+    return res
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", type=int, default=None)
@@ -128,6 +183,7 @@ def main():
     ap.add_argument("--raw", default="data_raw")
     ap.add_argument("--out", default="site/data/model.json")
     ap.add_argument("--refresh", action="store_true", help="re-download data files")
+    ap.add_argument("--players-out", default="site/data/players.json", help="player game logs ('' to skip)")
     a = ap.parse_args()
 
     games = None
@@ -572,6 +628,13 @@ def main():
                           home_ml=None if pd.isna(x.home_moneyline) else int(x.home_moneyline),
                           stadium=x.stadium if isinstance(x.stadium, str) else "", weather=wthr))
     print(f"weather: {n_fc} forecasts fetched, {n_fc_fail} failed")
+
+    # ---------------- player game logs (for the player panel) ----------------
+    if a.week is None and a.players_out:
+        logs = player_logs(pd.concat([prev, cur], ignore_index=True), out_teams)
+        with open(a.players_out, "w") as f:
+            json.dump(logs, f, separators=(",", ":"))
+        print("wrote", a.players_out, round(os.path.getsize(a.players_out) / 1e6, 2), "MB,", len(logs), "players")
 
     model = dict(
         generated=pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M UTC"),

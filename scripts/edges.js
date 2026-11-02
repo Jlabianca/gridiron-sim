@@ -60,7 +60,7 @@ for (const gid in odds.games) {
   // player props
   const byName = {};
   for (const p of Object.values(res.players)) byName[norm(p.name)] = p;
-  for (const t of [o.away, o.home]) for (const p of model.teams[t].players) if (!byName[norm(p.name)]) byName[norm(p.name)] = { name: p.name, team: t, pos: p.pos, missing: true, out: p.out };
+  for (const t of [o.away, o.home]) for (const p of model.teams[t].players) if (!byName[norm(p.name)]) byName[norm(p.name)] = { id: p.id, name: p.name, team: t, pos: p.pos, missing: true, out: p.out };
   let matched = 0, unmatched = [];
   for (const pr of o.props || []) {
     const k = STAT[pr.market], p = byName[norm(pr.player)];
@@ -69,7 +69,7 @@ for (const gid in odds.games) {
     matched++;
     const arr = p.r ? p.r[k] : null;          // null = player not in the sim (ruled out / not used)
     const at = (i) => (arr ? arr[i] : 0);
-    const base = { kind: "prop", player: p.name, team: p.team, pos: p.pos, stat: k, line: pr.line, out_in_model: !arr };
+    const base = { kind: "prop", player: p.name, pid: p.id, team: p.team, pos: p.pos, stat: k, line: pr.line, out_in_model: !arr };
     if (k === "td") {
       add(Object.assign({}, base, { label: `${p.name} anytime TD`, side: "yes", price: pr.over_price, book: pr.over_book, p: frac((i) => at(i) >= 1) }));
       continue;

@@ -390,10 +390,10 @@
     const side = (t) => {
       const ps = b.filter((s) => s.team === t);
       const sec = (title, rows) => (rows.length ? `<h4>${title}</h4><table>${rows.join("")}</table>` : "");
-      const tr = (n, v) => `<tr><td>${n}</td><td>${v}</td></tr>`;
-      return sec("PASSING", ps.filter((s) => s.pa).sort((x, y) => y.pa - x.pa).map((s) => tr(s.name, `${s.pc}/${s.pa}, ${s.py} YDS, ${s.ptd} TD, ${s.pint} INT`))) +
-        sec("RUSHING", ps.filter((s) => s.ra).sort((x, y) => y.ry - x.ry).map((s) => tr(s.name, `${s.ra} CAR, ${s.ry} YDS, ${s.rtd} TD`))) +
-        sec("RECEIVING", ps.filter((s) => s.tg).sort((x, y) => y.recy - x.recy).map((s) => tr(s.name, `${s.rec}/${s.tg} TGT, ${s.recy} YDS, ${s.rectd} TD`))) +
+      const tr = (n, v, id) => `<tr><td>${id ? `<span class="plink" data-pid="${id}">${n}</span>` : n}</td><td>${v}</td></tr>`;
+      return sec("PASSING", ps.filter((s) => s.pa).sort((x, y) => y.pa - x.pa).map((s) => tr(s.name, `${s.pc}/${s.pa}, ${s.py} YDS, ${s.ptd} TD, ${s.pint} INT`, s.id))) +
+        sec("RUSHING", ps.filter((s) => s.ra).sort((x, y) => y.ry - x.ry).map((s) => tr(s.name, `${s.ra} CAR, ${s.ry} YDS, ${s.rtd} TD`, s.id))) +
+        sec("RECEIVING", ps.filter((s) => s.tg).sort((x, y) => y.recy - x.recy).map((s) => tr(s.name, `${s.rec}/${s.tg} TGT, ${s.recy} YDS, ${s.rectd} TD`, s.id))) +
         sec("KICKING", ps.filter((s) => s.fga || s.xpa).map((s) => tr(s.name, `${s.fgm}/${s.fga} FG, ${s.xpm}/${s.xpa} XP, ${s.pts} PTS`)));
     };
     const ts = game.tstats, mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -504,7 +504,7 @@
       $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Avg TDs</th><th>Anytime TD</th><th>Fair odds</th><th>2+ TDs</th><th>Parlay</th></tr>` +
         rows.map(({ p, d, m }) => {
           const p1 = pOver(d, 0.5), p2 = pOver(d, 1.5);
-          return `<tr><td>${p.name}<span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td><td>${m.toFixed(2)}</td><td>${pct(p1)}</td><td>${american(p1)}</td><td>${pct(p2)}</td><td><button class="addleg" data-pid="${p.id}" data-stat="td" title="Add to parlay">+</button></td></tr>`;
+          return `<tr><td><span class="plink" data-pid="${p.id}" data-stat="td">${p.name}</span><span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td><td>${m.toFixed(2)}</td><td>${pct(p1)}</td><td>${american(p1)}</td><td>${pct(p2)}</td><td><button class="addleg" data-pid="${p.id}" data-stat="td" title="Add to parlay">+</button></td></tr>`;
         }).join("");
       return;
     }
@@ -516,7 +516,7 @@
         const o = pOver(d, line);
         const under = d.filter((x) => x < line).length / d.length;
         const cls = lines[key] != null ? (o >= 0.56 ? "edge-hi" : under >= 0.56 ? "edge-lo" : "") : "";
-        return `<tr><td>${p.name}<span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td>
+        return `<tr><td><span class="plink" data-pid="${p.id}" data-stat="${k}" data-line="${line}">${p.name}</span><span class="pos">${p.pos}</span></td><td><span class="teamtag" style="background:${col(p.team)}"></span>${p.team}</td>
           <td>${m.toFixed(1)}</td><td>${med}</td><td>${quant(d, 0.1)}–${quant(d, 0.9)}</td>
           <td><input data-key="${key}" type="number" step="0.5" value="${line}"></td>
           <td class="${cls && o >= 0.56 ? cls : ""}">${pct(o)}</td><td class="${cls && under >= 0.56 ? cls : ""}">${pct(under)}</td><td>${american(o)}</td><td>${american(under)}</td>
@@ -606,7 +606,7 @@
     for (let i = 0; i < n; i++) { let ok = 1; for (const h of hits) if (!h[i]) { ok = 0; break; } all += ok; }
     const joint = all / n, indep = probs.reduce((a, b) => a * b, 1);
     $("legTable").innerHTML = `<tr><th>Leg</th><th></th><th>Hit %</th><th>Fair odds</th><th></th></tr>` +
-      legs.map((l, i) => `<tr><td>${legLabel(l)}</td><td></td><td>${pct(probs[i])}</td><td>${american(probs[i])}</td><td><button class="rm" data-i="${i}" title="Remove leg">✕</button></td></tr>`).join("");
+      legs.map((l, i) => `<tr><td>${l.pid ? `<span class="plink" data-pid="${l.pid}" data-stat="${l.type === "td" ? "td" : l.stat}" data-line="${l.line != null ? l.line : ""}">${legLabel(l)}</span>` : legLabel(l)}</td><td></td><td>${pct(probs[i])}</td><td>${american(probs[i])}</td><td><button class="rm" data-i="${i}" title="Remove leg">✕</button></td></tr>`).join("");
     const corr = indep > 0 ? joint / indep : 0;
     const dec = decimalFromAmerican(bookOdds);
     const ev = dec ? joint * dec - 1 : null;
@@ -656,10 +656,11 @@
       if (tab) document.querySelector(`.tab[data-tab="${tab}"]`).click();
     };
     $("edGames").addEventListener("click", (e) => {
+      if (e.target.closest(".plink")) return;
       const open = e.target.closest(".eg-open"); if (open) return goGame(open, "watch");
       const head = e.target.closest(".eg-head"); if (head) goGame(head);
     });
-    $("edTop").addEventListener("click", (e) => { const c = e.target.closest(".topcard"); if (c) goGame(c); });
+    $("edTop").addEventListener("click", (e) => { if (e.target.closest(".plink")) return; const c = e.target.closest(".topcard"); if (c) goGame(c); });
   }
   function renderEdges() {
     const e = edges; if (!e) return;
@@ -692,7 +693,7 @@
       const g = gameOf(b);
       return `<div class="topcard" style="--tier:${b.ev > 0.2 ? "var(--accent)" : "var(--good)"}" data-a="${g.away}" data-h="${g.home}" title="Open this game">
         <span class="rank">#${i + 1}</span><div class="tc-game">${g.away} @ ${g.home} · ${fmtT(b.commence)}</div>
-        <div class="tc-bet">${b.label}${flags(b)}</div>
+        <div class="tc-bet">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
         <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span><span class="tc-ev">${signed(b.ev)}%</span></div>
         ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span>Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
     }).join("");
@@ -714,7 +715,7 @@
           <span class="eg-count ${n5 ? "" : "zero"}">${n5} edge${n5 === 1 ? "" : "s"} 5%+</span>
           <button class="eg-open" data-a="${g.away}" data-h="${g.home}">Simulate ▸</button></div>
         ${rows.length ? hdr + rows.map((b) => `<div class="erow">
-            <div class="ebet"><span class="tag">${tag(b)}</span>${b.label}${flags(b)}</div>
+            <div class="ebet"><span class="tag">${tag(b)}</span>${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
             <div><span class="price">${priceTxt(b.price)}</span> <span class="bookpill">${b.book || ""}</span></div>
             <div class="eprob">${bar(b)}<div class="lbl"><span>model ${(b.p * 100).toFixed(1)}%</span><span>book ${(b.p_implied * 100).toFixed(1)}%</span></div></div>
             <div class="eedge ${b.p >= b.p_implied ? "edge-hi" : "edge-lo"}">${signed(b.p - b.p_implied)}</div>
@@ -821,13 +822,162 @@
     $("scTable").innerHTML = `<tr><th>Wk</th><th>Game</th><th>Final</th><th>Model winner</th><th>Proj. score</th><th>Spread pick</th><th>Total pick</th></tr>` + rowsUp + rowsDone;
   }
 
+  // ---------------- player panel ----------------
+  let plogs = null, plogsLoading = null;
+  const pd = { pid: null, stat: null, line: null, range: "L10" };
+  const PSTAT = { py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
+    recy: "Rec yds", rec: "Receptions", tg: "Targets", rry: "Rush+Rec yds", td: "TDs" };
+  const statVal = (e, k) => (k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
+  const projCache = {};
+  function getLogs() {
+    if (!plogsLoading) plogsLoading = fetch("data/players.json?" + (model ? model.generated : "")).then((r) => r.json()).then((d) => (plogs = d)).catch(() => (plogs = {}));
+    return plogsLoading;
+  }
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest(".plink");
+    if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    openPlayer(el.dataset.pid, el.dataset.stat || null, el.dataset.line !== undefined && el.dataset.line !== "" ? +el.dataset.line : null);
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlayer(); });
+  function closePlayer() { $("pd").classList.add("hidden"); $("pdBack").classList.add("hidden"); }
+  function openPlayer(pid, stat, line) {
+    pd.pid = pid; pd.stat = stat; pd.line = line; pd.range = "L10";
+    $("pd").innerHTML = `<div class="dim">Loading…</div>`;
+    $("pd").classList.remove("hidden"); $("pdBack").classList.remove("hidden");
+    $("pdBack").onclick = closePlayer;
+    getLogs().then(renderPlayer);
+  }
+  function playerMeta(pid) {
+    for (const t in model.teams) { const p = model.teams[t].players.find((x) => x.id === pid); if (p) return Object.assign({ team: t }, p); }
+    const L = plogs[pid]; return L ? { id: pid, name: L.name, team: L.team, pos: L.pos } : { id: pid, name: pid, team: "", pos: "" };
+  }
+  function nextGame(team) {
+    const up = model.schedule.filter((g) => g.home_score == null && (g.away === team || g.home === team)).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+    return up[0] || null;
+  }
+  function projectionFor(pid, team) {
+    // reuse the projections tab if it's this matchup; otherwise quick-sim the player's next game
+    if (projResult && projResult.players[pid] && (team === cur.away || team === cur.home)) return { res: projResult, game: { away: cur.away, home: cur.home } };
+    const g = nextGame(team); if (!g) return null;
+    const key = g.away + "@" + g.home;
+    if (!projCache[key]) {
+      const w = g.weather && g.weather.features ? g.weather.features : null;
+      projCache[key] = NFLSim.summarize(NFLSim.simulateMany(model, { away: g.away, home: g.home, seed: 4242, weather: w }, 2000));
+    }
+    return { res: projCache[key], game: g };
+  }
+  function defRank(team, key, lowIsTough = true) {
+    const vals = Object.keys(model.teams).map((t) => [t, model.teams[t].def[key]]).sort((a, b) => (lowIsTough ? a[1] - b[1] : b[1] - a[1]));
+    const i = vals.findIndex((x) => x[0] === team);
+    return { rank: i + 1, val: model.teams[team].def[key] };
+  }
+  const ord = (n) => n + (["th", "st", "nd", "rd"][((n % 100) - 20) % 10] || ["th", "st", "nd", "rd"][n % 100] || "th");
+  function renderPlayer() {
+    const pid = pd.pid, meta = playerMeta(pid), L = (plogs[pid] && plogs[pid].log) || [];
+    const pos = meta.pos || (plogs[pid] || {}).pos || "";
+    const statsFor = pos === "QB" ? ["py", "pc", "ptd", "pint", "ry"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td"] : ["recy", "rec", "tg", "rry", "td"];
+    const avail = statsFor.filter((k) => L.some((e) => statVal(e, k) > 0));
+    if (!pd.stat || !PSTAT[pd.stat]) pd.stat = avail[0] || statsFor[0];
+    const k = pd.stat;
+    const season = model.season;
+    let games = L.slice();
+    if (pd.range === "L5") games = L.filter((e) => e.s === season).slice(-5);
+    else if (pd.range === "L10") games = L.slice(-10);
+    else if (pd.range === "season") games = L.filter((e) => e.s === season);
+    else if (pd.range === "last") games = L.filter((e) => e.s === season - 1);
+    const vals = games.map((e) => statVal(e, k));
+    const sorted = [...vals].sort((a, b) => a - b);
+    const med = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : 0;
+    const proj = projectionFor(pid, meta.team);
+    const mp = proj && proj.res.players[pid] && proj.res.players[pid].d[k] ? proj.res.players[pid].d[k] : null;
+    const mMed = mp ? mp[Math.floor(mp.length / 2)] : null;
+    if (pd.line == null || isNaN(pd.line)) pd.line = k === "td" ? 0.5 : Math.floor(mMed != null ? mMed : med) + 0.5;
+    const line = pd.line;
+    const over = vals.filter((v) => v > line).length;
+    const all = L.filter((e) => e.s === season).map((e) => statVal(e, k));
+    const l5 = all.slice(-5);
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const bookProp = edges && edges.bets.find((b) => b.pid === pid && b.stat === k && (b.side === "over" || b.side === "yes"));
+    const g = proj && proj.game, opp = g ? (g.home === meta.team ? g.away : g.home) : null;
+
+    // chart
+    const W = 520, H = 210, padL = 30, padB = 34, padT = 14, n = vals.length;
+    const maxV = Math.max(line * 1.15, ...vals, 1), bw = n ? (W - padL - 6) / n : 0;
+    const Y = (v) => H - padB - (v / maxV) * (H - padB - padT);
+    let svg = "";
+    for (let t = 0; t <= 4; t++) { const v = (maxV * t) / 4; svg += `<line x1="${padL}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#1d2a38"/><text x="${padL - 4}" y="${Y(v) + 3}" fill="#7d8ea1" font-size="9" font-family="monospace" text-anchor="end">${Math.round(v)}</text>`; }
+    games.forEach((e, i) => {
+      const v = vals[i], x = padL + i * bw + bw * 0.15, w = bw * 0.7, c = v > line ? "#3ecf8e" : v === line ? "#7d8ea1" : "#ef5b5b";
+      svg += `<rect x="${x}" y="${Y(v)}" width="${w}" height="${Math.max(1, H - padB - Y(v))}" rx="3" fill="${c}" opacity="${e.s === season ? 0.9 : 0.5}"><title>${e.s} wk ${e.w} ${e.h ? "vs" : "@"} ${e.opp}: ${v}</title></rect>`;
+      if (n <= 14) svg += `<text x="${x + w / 2}" y="${Y(v) - 4}" fill="#e8eef5" font-size="10" font-family="monospace" text-anchor="middle">${v}</text>`;
+      const every = Math.ceil(n / 10);
+      if ((n - 1 - i) % every === 0) svg += `<text x="${x + w / 2}" y="${H - padB + 13}" fill="#7d8ea1" font-size="9" font-family="monospace" text-anchor="middle">${e.s !== season ? "'" + String(e.s).slice(2) + " " : ""}W${e.w}</text>
+              <text x="${x + w / 2}" y="${H - padB + 25}" fill="${col(e.opp)}" font-size="9" font-family="monospace" text-anchor="middle">${e.h ? "" : "@"}${e.opp}</text>`;
+    });
+    svg += `<line x1="${padL}" x2="${W}" y1="${Y(line)}" y2="${Y(line)}" stroke="#f2c94c" stroke-width="2" stroke-dasharray="6 4"/>
+            <text x="${W - 2}" y="${Y(line) - 5}" fill="#f2c94c" font-size="11" font-family="monospace" text-anchor="end">line ${line}</text>`;
+    if (!n) svg += `<text x="${W / 2}" y="${H / 2}" fill="#7d8ea1" font-size="13" font-family="monospace" text-anchor="middle">No games in this range</text>`;
+
+    // model card
+    let modelHtml = "";
+    if (proj && mp) {
+      const pOver = mp.filter((v) => v > line).length / mp.length;
+      const nx = proj.game, at = nx.home === meta.team ? "vs" : "@";
+      const defKey = ["ry", "ra", "rry"].includes(k) ? "ypr" : "ypc";
+      const dr = opp ? defRank(opp, defKey) : null;
+      modelHtml = `<div class="pd-model"><h4>Model · next game ${at} ${opp}</h4><div class="row">
+        <span>median <b>${mMed}</b></span><span>mean <b>${(mp.reduce((a, b) => a + b, 0) / mp.length).toFixed(1)}</b></span>
+        <span>80% range <b>${mp[Math.floor(mp.length * 0.1)]}–${mp[Math.floor(mp.length * 0.9)]}</b></span>
+        <span>over ${line}: <b style="color:${pOver >= 0.5 ? "var(--good)" : "var(--bad)"}">${(pOver * 100).toFixed(0)}%</b> (fair ${american(pOver)})</span></div>
+        ${bookProp ? `<div class="pd-opp">Book: ${bookProp.line != null && k !== "td" ? "o" + bookProp.line + " " : ""}${bookProp.price > 0 ? "+" + bookProp.price : bookProp.price} at ${bookProp.book} · model ${(bookProp.p * 100).toFixed(0)}% vs book ${(bookProp.p_implied * 100).toFixed(0)}%</div>` : ""}
+        ${dr ? `<div class="pd-opp">${opp} defense allows ${dr.val.toFixed(1)} ${defKey === "ypr" ? "yds/carry" : "yds/completion"}, ${dr.rank === 1 ? "the fewest" : dr.rank === 32 ? "the most" : dr.rank <= 16 ? `the ${ord(dr.rank)} fewest` : `the ${ord(33 - dr.rank)} most`} in the league${dr.rank <= 8 ? " (tough matchup)" : dr.rank >= 25 ? " (soft matchup)" : ""}.</div>` : ""}
+      </div>`;
+    } else if (proj) {
+      modelHtml = `<div class="pd-model"><h4>Model</h4><div class="pd-opp">Not projected for the next game${meta.out ? " (ruled out on the injury report)" : ""}.</div></div>`;
+    }
+
+    // game log
+    const cols = pos === "QB" ? [["pc", "CMP"], ["pa", "ATT"], ["py", "YDS"], ["ptd", "TD"], ["pint", "INT"], ["ra", "CAR"], ["ry", "RYD"]]
+      : pos === "RB" ? [["ra", "CAR"], ["ry", "YDS"], ["rtd", "TD"], ["tg", "TGT"], ["rec", "REC"], ["recy", "RCYD"], ["share", "CAR %"]]
+      : [["tg", "TGT"], ["rec", "REC"], ["recy", "YDS"], ["rectd", "TD"], ["share", "TGT %"], ["ra", "CAR"], ["ry", "RYD"]];
+    const cell = (e, c) => c === "share" ? (pos === "RB" ? (e.tra ? Math.round(((e.ra || 0) / e.tra) * 100) + "%" : "–") : (e.ttg ? Math.round(((e.tg || 0) / e.ttg) * 100) + "%" : "–")) : e[c] || 0;
+    const rows = L.slice().reverse().map((e) => {
+      const v = statVal(e, k), res = e.pf > e.pa_ ? "W" : e.pf < e.pa_ ? "L" : "T";
+      return `<tr><td>${e.s !== season ? "'" + String(e.s).slice(2) + " " : ""}W${e.w}</td><td>${e.h ? "vs" : "@"} <span style="color:${col(e.opp)}">${e.opp}</span></td><td>${res} ${e.pf}–${e.pa_}</td>
+        ${cols.map(([c]) => `<td class="${(c === k || (k === "rry" && (c === "ry" || c === "recy"))) ? (v > line ? "hi" : "lo") : ""}">${cell(e, c)}</td>`).join("")}</tr>`;
+    }).join("");
+
+    const nx = nextGame(meta.team);
+    $("pd").style.setProperty("--tm", col(meta.team));
+    $("pd").innerHTML = `<button class="pd-x" title="Close (Esc)">✕</button>
+      <h3 class="pd-name">${meta.name}</h3>
+      <div class="pd-sub"><span style="color:${col(meta.team)}">${meta.team}</span> · ${pos}${meta.status ? `<span class="st">${meta.status}</span>` : ""}${meta.out && !meta.status ? `<span class="st">not active</span>` : ""}</div>
+      ${nx ? `<div class="pd-next">Next: ${nx.away === meta.team ? "@ " + nx.home : "vs " + nx.away} · ${new Date(nx.date + "T12:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} ${nx.time || ""}</div>` : ""}
+      <div class="pd-chips">${avail.map((s) => `<button data-s="${s}" class="${s === k ? "on" : ""}">${PSTAT[s]}</button>`).join("") || '<span class="dim">No stats recorded yet</span>'}</div>
+      <div class="pd-ctl"><label>Line <input id="pdLine" type="number" step="0.5" value="${line}"></label>
+        <div class="seg" id="pdRange">${[["L5", "Last 5"], ["L10", "Last 10"], ["season", String(season)], ["last", String(season - 1)]].map(([v, t]) => `<button data-v="${v}" class="${pd.range === v ? "on" : ""}">${t}</button>`).join("")}</div></div>
+      <div class="pd-chart"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div>
+      <div class="pd-cards">
+        <div class="card"><div class="k">Over ${line}</div><div class="v ${over / (n || 1) >= 0.5 ? "good" : "bad"}">${over}/${n}</div><div class="s">${n ? Math.round((over / n) * 100) : 0}% of games shown</div></div>
+        <div class="card"><div class="k">Last 5 (${season})</div><div class="v">${l5.filter((v) => v > line).length}/${l5.length}</div><div class="s">${l5.join(" · ") || "–"}</div></div>
+        <div class="card"><div class="k">Avg / median</div><div class="v">${avg.toFixed(1)}</div><div class="s">median ${med} · high ${sorted[sorted.length - 1] ?? "–"}</div></div>
+      </div>
+      ${modelHtml}
+      <div class="sec"><h4>Game log</h4><table><tr><th>Wk</th><th>Opp</th><th>Result</th>${cols.map(([, t]) => `<th>${t}</th>`).join("")}</tr>${rows || '<tr><td colspan="10" class="dim">No games yet</td></tr>'}</table></div>`;
+    $("pd").querySelector(".pd-x").onclick = closePlayer;
+    $("pd").querySelectorAll(".pd-chips button").forEach((b) => (b.onclick = () => { pd.stat = b.dataset.s; pd.line = null; renderPlayer(); }));
+    $("pd").querySelectorAll("#pdRange button").forEach((b) => (b.onclick = () => { pd.range = b.dataset.v; renderPlayer(); }));
+    $("pdLine").onchange = () => { pd.line = +$("pdLine").value; renderPlayer(); };
+  }
+
   // ---------------- roster ----------------
   function renderRoster() {
     const block = (t) => {
       const ps = model.teams[t].players;
       return `<div class="team"><h3 style="color:${col(t)}">${t}</h3><div class="hdr"><span></span><span>Player</span><span>Status</span><span>Carry %</span><span>Target %</span></div>` +
         ps.map((p) => `<label class="${outSet.has(p.id) ? "off" : ""}"><input type="checkbox" data-id="${p.id}" ${outSet.has(p.id) ? "" : "checked"}>
-          <span>${p.name} <span class="pos">${p.pos}</span></span><span class="st">${p.status || (p.gone ? "Inactive" : p.out ? "Not active" : "")}</span>
+          <span><span class="plink" data-pid="${p.id}">${p.name}</span> <span class="pos">${p.pos}</span></span><span class="st">${p.status || (p.gone ? "Inactive" : p.out ? "Not active" : "")}</span>
           <span>${(p.rush_share * 100).toFixed(0)}%</span><span>${(p.tgt_share * 100).toFixed(0)}%</span></label>`).join("") + "</div>";
     };
     $("rosters").innerHTML = block(cur.away) + block(cur.home);

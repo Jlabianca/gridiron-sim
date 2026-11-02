@@ -10,6 +10,7 @@ https://jlabianca.github.io/gridiron-sim/
 
 - **Same-game parlay builder** (Projections tab): add moneyline, spread, total, team total, player prop and anytime-TD legs. The model prices the parlay by counting how often *all* legs hit in the same simulated game, so correlated legs are priced as a combination, and shows that next to the "if independent" price and the EV against your book's odds.
 - **Edge board**: every game with sportsbook lines is simulated 10,000 times and compared with the best price across major US books (lines from [The Odds API](https://the-odds-api.com)), ranked by expected value. Bets with very large gaps are flagged "check news".
+- **Player panel**: click any player name (props, edge board, rosters, box scores, parlay legs) to see a chart of their recent games against a prop line you choose, hit rates, a game log with target and carry shares, and the model's projection and odds for their next game. It also shows the sportsbook line when there is one, plus how the opponent's defense ranks.
 - **Scorecard**: every projection is saved before kickoff and graded afterwards, covering straight-up, against the spread, totals, strong picks, units at −110, and a Brier score against the market. Weeks 3–8 were backfilled from models rebuilt with only the data available before each week.
 
 The site is fully static: one JSON model file and plain JavaScript, with no server. It's hosted on GitHub Pages, and a scheduled GitHub Action rebuilds the model from fresh nflverse data every day.
