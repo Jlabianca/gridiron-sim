@@ -50,12 +50,20 @@ jobs:
           node scripts/edges.js site/data/model.json site/data/odds.json site/data/edges.json 10000 | tee edges.log
           grep "^edges:" edges.log | sed 's/^/::notice title=Edges::/' || true
       - name: Save history and odds to the repo
+        continue-on-error: true   # never block the deploy over this
         run: |
           git config user.name "gridiron-sim bot"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add site/data/history.json
           [ -f site/data/odds.json ] && git add site/data/odds.json
-          git diff --cached --quiet || (git commit -m "Data update $(date -u +%Y-%m-%d)" && git pull --rebase -X theirs && git push)
+          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
+          git commit -m "Data update $(date -u +%Y-%m-%d)"
+          for i in 1 2 3; do
+            git fetch --depth=20 origin main && git rebase -X ours origin/main && git push origin HEAD:main && exit 0
+            git rebase --abort 2>/dev/null; sleep 5
+          done
+          echo "::warning title=Save::could not push history/odds (check Settings → Actions → General → Workflow permissions = Read and write)"
+          exit 1
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
