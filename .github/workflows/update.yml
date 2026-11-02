@@ -38,12 +38,24 @@ jobs:
       - name: Calibrate clock and scoring
         run: node scripts/calibrate.js site/data/model.json
       - name: Update scorecard (save pre-game projections, grade finals)
+        run: node scripts/scorecard.js site/data/model.json site/data/history.json
+      - name: Fetch sportsbook lines (The Odds API)
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
-          node scripts/scorecard.js site/data/model.json site/data/history.json
+          python scripts/fetch_odds.py | tee odds.log
+          grep "^odds:" odds.log | sed 's/^/::notice title=Odds::/'
+      - name: Build edge board
+        run: |
+          node scripts/edges.js site/data/model.json site/data/odds.json site/data/edges.json 10000 | tee edges.log
+          grep "^edges:" edges.log | sed 's/^/::notice title=Edges::/' || true
+      - name: Save history and odds to the repo
+        run: |
           git config user.name "gridiron-sim bot"
           git config user.email "actions@users.noreply.github.com"
           git add site/data/history.json
-          git diff --cached --quiet || (git commit -m "Scorecard update $(date -u +%Y-%m-%d)" && git pull --rebase -X theirs && git push)
+          [ -f site/data/odds.json ] && git add site/data/odds.json
+          git diff --cached --quiet || (git commit -m "Data update $(date -u +%Y-%m-%d)" && git pull --rebase -X theirs && git push)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

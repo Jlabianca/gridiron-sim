@@ -8,6 +8,10 @@ https://jlabianca.github.io/gridiron-sim/
 - **Projections & props**: re-run the game 1,000–20,000 times to get win probability, fair moneylines, cover and over/under odds against the market line, the margin and total distributions, and per-player prop distributions. Type in a sportsbook line and it shows the model's over/under probability and fair odds.
 - **Injuries / usage**: toggle players in or out. Players listed Out or Doubtful on the injury report, or not on the active roster, start out. Their carries and targets are re-split among the remaining players.
 
+- **Same-game parlay builder** (Projections tab): add moneyline, spread, total, team total, player prop and anytime-TD legs. The model prices the parlay by counting how often *all* legs hit in the same simulated game, so correlated legs are priced as a combination, and shows that next to the "if independent" price and the EV against your book's odds.
+- **Edge board**: every game with sportsbook lines is simulated 10,000 times and compared with the best price across major US books (lines from [The Odds API](https://the-odds-api.com)), ranked by expected value. Bets with very large gaps are flagged "check news".
+- **Scorecard**: every projection is saved before kickoff and graded afterwards, covering straight-up, against the spread, totals, strong picks, units at −110, and a Brier score against the market. Weeks 3–8 were backfilled from models rebuilt with only the data available before each week.
+
 The site is fully static: one JSON model file and plain JavaScript, with no server. It's hosted on GitHub Pages, and a scheduled GitHub Action rebuilds the model from fresh nflverse data every day.
 
 ## How the model works
@@ -57,13 +61,17 @@ Opening `index.html` straight from disk won't work, because the page has to fetc
 2. In the repo, go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
 3. The workflow in `.github/workflows/update.yml` runs on every push, daily at about 7am ET, and on demand from the **Actions** tab. It rebuilds the model and deploys the site to `https://<you>.github.io/<repo>/`.
 
+### Sportsbook lines (optional)
+
+The edge board needs a free API key from [The Odds API](https://the-odds-api.com), saved as the repository secret `ODDS_API_KEY` (Settings → Secrets and variables → Actions). The free plan allows 500 credits a month. Each daily run spends 3 credits on game lines. Player props (passing, rushing and receiving yards, receptions, anytime TD) cost 5 credits per game, so they're only fetched once a game is within about 30 hours of kickoff. That comes to roughly 100 credits a week. Without a key, everything else still works.
+
 ## Known limitations / ideas
 
 - No rest days, travel or coaching changes. QB effects only cover passing efficiency, not play-calling.
 - Weather effects are averages over every regular-season game from 2018 to 2026. Snow is rare (around 0.7% of games), so its effects are uncertain and shrunk heavily.
 - Two-point conversions, onside kicks and return touchdowns on kicks aren't modelled.
 - Receiver yardage samples are small early in the season and get shrunk toward the team average.
-- Ideas: pulling live prop lines from an odds API, a per-week comparison table of model vs. market, and tracking the model's results over the season.
+- Lines refresh once a day (around 6–7am ET). Click "Run workflow" in the Actions tab to refresh them on demand, which costs credits.
 
 ## Data and credits
 

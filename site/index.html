@@ -16,6 +16,7 @@
     <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
     <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
+    <button class="tab" data-tab="edges" role="tab">Edge board</button>
     <button class="tab" data-tab="score" role="tab">Scorecard</button>
   </nav>
 </header>
@@ -114,6 +115,23 @@
       </div>
     </div>
     <p class="note">Probabilities come from repeating the simulated game thousands of times. The model is a simple play-level simulation and has not been proven to beat the market — treat edges as leads to research, not as bets.</p>
+  </section>
+
+  <!-- EDGE BOARD -->
+  <section id="tab-edges" class="pane">
+    <div class="scorehead">
+      <h2>Edge board</h2>
+      <p class="dim">Every game with sportsbook lines is simulated 10,000 times and compared with the <b>best price</b> across major US books. <b>Edge</b> = model probability minus the book's implied probability. <b>EV</b> = expected profit per $1 if the model were right. Big gaps usually mean the model is missing something (an injury, a role change, a weather update), so treat them as things to check, not bets.</p>
+      <p class="mono dim" id="edMeta"></p>
+      <div class="controls">
+        <label>Market <select id="edKind"><option value="">All</option><option value="game">Game lines</option><option value="prop">Player props</option></select></label>
+        <label>Game <select id="edGame"><option value="">All games</option></select></label>
+        <label>Min EV <select id="edMin"><option value="-1">Any</option><option value="0">0%+</option><option value="0.03" selected>3%+</option><option value="0.05">5%+</option><option value="0.1">10%+</option></select></label>
+        <label class="chk"><input type="checkbox" id="edBest" checked> best side only</label>
+      </div>
+    </div>
+    <div class="cards" id="edCards"></div>
+    <table class="props edges" id="edTable"></table>
   </section>
 
   <!-- SCORECARD -->

@@ -179,3 +179,10 @@ table.sc td.ok { color: var(--good); } table.sc td.no { color: var(--bad); } tab
 table.sc .bf { font-size: 10px; color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
 table.sc .up { color: var(--accent); font-size: 11px; }
 .card .v.good { color: var(--good); } .card .v.bad { color: var(--bad); }
+
+/* edge board */
+table.edges td.ev { font-weight: 700; }
+table.edges .flag { font-size: 10px; color: var(--accent); border: 1px solid #5a4a1a; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+table.edges .flag.red { color: var(--bad); border-color: #5a2323; }
+table.edges .book { color: var(--dim); font-size: 11px; margin-left: 4px; }
+table.edges .gm { color: var(--dim); font-size: 11px; }
