@@ -174,6 +174,7 @@
       if (t.dataset.tab === "edges") loadEdges();
       if (t.dataset.tab === "live") renderGameDay();
       if (t.dataset.tab === "fantasy") loadFantasy();
+      if (t.dataset.tab === "season") loadSeason();
     }));
   }
 
@@ -229,6 +230,93 @@
     resetBoard();
     startWP();
     $("btnPlay").textContent = "▶ Play";
+  }
+
+  // ---------------- season ----------------
+  let season = null, rhist = null;
+  const se = { view: "odds", conf: "", team: null };
+  function loadSeason() {
+    if (season) return renderSeason();
+    Promise.all([
+      fetch("data/season.json?" + (model ? model.generated : "")).then((r) => (r.ok ? r.json() : null)),
+      fetch("data/ratings_history.json?" + (model ? model.generated : "")).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([s2, h]) => {
+      season = s2; rhist = h;
+      if (!season) { $("seBody").innerHTML = `<div class="gd-card dim">Season projections appear after the next daily update.</div>`; return; }
+      for (const id of ["seView", "seConf"]) $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => {
+        $(id).querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        se[id === "seView" ? "view" : "conf"] = b.dataset.v; renderSeason();
+      }));
+      $("seBody").addEventListener("click", (e) => { const r = e.target.closest("tr[data-t]"); if (r) { se.team = se.team === r.dataset.t ? null : r.dataset.t; renderSeason(); $("seTeam").scrollIntoView({ behavior: "smooth", block: "nearest" }); } });
+      $("seTeam").addEventListener("click", (e) => { if (e.target.closest("button[data-close]")) { se.team = null; renderSeason(); } });
+      renderSeason();
+    }).catch(() => { $("seBody").innerHTML = `<div class="gd-card dim">Season projections appear after the next daily update.</div>`; });
+  }
+  const heat = (p, hue = "62,207,142") => `<span class="heat" style="background:rgba(${hue},${(0.08 + 0.75 * p).toFixed(2)});color:${p > 0.55 ? "#06140c" : "var(--text)"}">${p >= 0.995 ? ">99%" : p > 0 && p < 0.005 ? "<1%" : Math.round(p * 100) + "%"}</span>`;
+  const recStr = (t) => `${t.w}-${t.l}${t.t ? "-" + t.t : ""}`;
+  const tname = (t) => `<span class="tname"><i style="background:${col(t)}"></i>${t}</span>`;
+  function renderSeason() {
+    const S = season, T = S.teams;
+    $("seMeta").textContent = `${S.season} · after week ${S.through_week} · ${S.seasons.toLocaleString()} simulated seasons · built ${S.generated}`;
+    const confOk = (t) => !se.conf || T[t].conf === se.conf;
+    if (se.view === "odds") {
+      $("seBody").innerHTML = `<div class="se-divs">${Object.entries(S.divisions).filter(([d]) => !se.conf || d.startsWith(se.conf)).map(([d, ts]) => {
+        const rows = ts.slice().sort((a, b) => T[b].proj_w - T[a].proj_w);
+        return `<div class="se-div"><h3>${d}</h3><table class="se"><tr><th>Team</th><th>Record</th><th>Proj W</th><th>Playoffs</th><th>Division</th><th>#1 seed</th><th>Conf</th><th>Super Bowl</th></tr>
+          ${rows.map((t) => `<tr class="row ${se.team === t ? "sel" : ""}" data-t="${t}"><td>${tname(t)}</td><td>${recStr(T[t])}</td><td>${T[t].proj_w.toFixed(1)}</td>
+            <td>${heat(T[t].playoff)}</td><td>${heat(T[t].div_title)}</td><td>${heat(T[t].seed1, "242,201,76")}</td><td>${heat(T[t].conf_title, "242,201,76")}</td><td>${heat(T[t].sb, "242,201,76")}</td></tr>`).join("")}</table></div>`;
+      }).join("")}</div>`;
+    } else if (se.view === "power") {
+      const weeks = rhist ? Object.keys(rhist.weeks).map(Number).sort((a, b) => a - b) : [];
+      const prevW = weeks.filter((w) => w < S.through_week).pop();
+      const prevRank = {};
+      if (prevW != null) Object.entries(rhist.weeks[prevW]).sort((a, b) => b[1] - a[1]).forEach(([t], i) => (prevRank[t] = i + 1));
+      const all = Object.keys(T).sort((a, b) => T[b].rating - T[a].rating);
+      const maxR = Math.max(...all.map((t) => Math.abs(T[t].rating)), 1), maxOD = Math.max(...all.map((t) => Math.max(Math.abs(T[t].off), Math.abs(T[t].def))), 1);
+      const dbar = (v, m) => { const w = (Math.abs(v) / m) * 50; return `<span class="dbar"><b></b><i style="${v >= 0 ? `left:50%;width:${w}%;background:var(--good)` : `left:${50 - w}%;width:${w}%;background:var(--bad)`}"></i></span>`; };
+      const spark = (t) => {
+        if (!weeks.length) return "";
+        const vals = weeks.map((w) => rhist.weeks[w][t]).filter((v) => v != null); if (vals.length < 2) return "";
+        const lo = -maxR, hi = maxR, W = 90, H = 22, X = (i) => (i / (vals.length - 1)) * W, Y = (v) => H - ((v - lo) / (hi - lo)) * H;
+        return `<svg class="spark" width="${W}" height="${H}"><line x1="0" x2="${W}" y1="${Y(0)}" y2="${Y(0)}" stroke="#33475c" stroke-dasharray="2 2"/><path d="${vals.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")}" fill="none" stroke="${col(t)}" stroke-width="2"/></svg>`;
+      };
+      $("seBody").innerHTML = `<div class="se-div"><table class="se se-power"><tr><th>#</th><th style="text-align:left">Team</th><th>Record</th><th>Rating</th><th style="text-align:center">vs average</th><th style="text-align:center">Offense</th><th style="text-align:center">Defense</th><th>Trend (wk ${weeks[0] ?? "–"}–${weeks[weeks.length - 1] ?? "–"})</th><th>Rest of schedule</th><th>Playoffs</th></tr>
+        ${all.filter(confOk).map((t) => {
+          const rk = all.indexOf(t) + 1, pr = prevRank[t], mv = pr ? pr - rk : 0;
+          return `<tr class="row ${se.team === t ? "sel" : ""}" data-t="${t}"><td class="rk">${rk}${mv ? `<span class="mv ${mv > 0 ? "up" : "dn"}">${mv > 0 ? "▲" : "▼"}${Math.abs(mv)}</span>` : ""}</td><td>${tname(t)}</td><td>${recStr(T[t])}</td>
+            <td><b>${T[t].rating > 0 ? "+" : ""}${T[t].rating.toFixed(1)}</b></td><td style="text-align:center">${dbar(T[t].rating, maxR)}</td>
+            <td style="text-align:center" title="points scored vs average">${dbar(T[t].off, maxOD)} <span class="dim">${T[t].off > 0 ? "+" : ""}${T[t].off.toFixed(1)}</span></td>
+            <td style="text-align:center" title="points prevented vs average">${dbar(T[t].def, maxOD)} <span class="dim">${T[t].def > 0 ? "+" : ""}${T[t].def.toFixed(1)}</span></td>
+            <td>${spark(t)}</td><td title="average rating of remaining opponents">${T[t].sos_rest > 0.75 ? '<span style="color:var(--bad)">hard</span>' : T[t].sos_rest < -0.75 ? '<span style="color:var(--good)">easy</span>' : "average"} <span class="dim">(${T[t].sos_rest > 0 ? "+" : ""}${T[t].sos_rest.toFixed(1)})</span></td>
+            <td>${heat(T[t].playoff)}</td></tr>`;
+        }).join("")}</table></div>`;
+    } else {
+      const all = Object.keys(T).filter(confOk).sort((a, b) => T[b].pick1 - T[a].pick1 || T[b].top5 - T[a].top5 || T[a].proj_w - T[b].proj_w).slice(0, 16);
+      $("seBody").innerHTML = `<div class="se-div"><h3>Race for the #1 pick</h3><table class="se"><tr><th>Team</th><th>Record</th><th>Proj W</th><th>#1 pick</th><th>Top-5 pick</th><th>Playoffs</th></tr>
+        ${all.map((t) => `<tr class="row ${se.team === t ? "sel" : ""}" data-t="${t}"><td>${tname(t)}</td><td>${recStr(T[t])}</td><td>${T[t].proj_w.toFixed(1)}</td><td>${heat(T[t].pick1, "239,91,91")}</td><td>${heat(T[t].top5, "239,91,91")}</td><td>${heat(T[t].playoff)}</td></tr>`).join("")}</table></div>
+        <p class="note">Draft order is by record only (strength-of-schedule tiebreakers are approximated by a coin flip).</p>`;
+    }
+    renderSeasonTeam();
+  }
+  function renderSeasonTeam() {
+    const t = se.team; if (!t || !season.teams[t]) { $("seTeam").innerHTML = ""; return; }
+    const T = season.teams[t], c = col(t);
+    // seed distribution
+    const sd = T.seeds, W = 320, H = 140, bw = W / 8;
+    let seedSvg = "";
+    const lab = ["Out", "1", "2", "3", "4", "5", "6", "7"], order = [1, 2, 3, 4, 5, 6, 7, 0], maxS = Math.max(...sd, 0.01);
+    order.forEach((k, i) => { const h = (sd[k] / maxS) * (H - 34); seedSvg += `<rect x="${i * bw + 4}" y="${H - 18 - h}" width="${bw - 8}" height="${h}" rx="3" fill="${k === 0 ? "#3a4a5c" : c}" opacity="${k === 0 ? 1 : 0.85}"/><text x="${i * bw + bw / 2}" y="${H - 4}" fill="#7d8ea1" font-size="10" font-family="monospace" text-anchor="middle">${lab[k]}</text>${sd[k] >= 0.01 ? `<text x="${i * bw + bw / 2}" y="${H - 22 - h}" fill="#e8eef5" font-size="10" font-family="monospace" text-anchor="middle">${Math.round(sd[k] * 100)}%</text>` : ""}`; });
+    // win distribution
+    const wd = T.wins_dist, lo = wd.findIndex((x) => x >= 0.002), hi = 17 - [...wd].reverse().findIndex((x) => x >= 0.002), n = hi - lo + 1, bw2 = W / n, maxW = Math.max(...wd);
+    let winSvg = "";
+    for (let k = lo; k <= hi; k++) { const i = k - lo, h = (wd[k] / maxW) * (H - 34); winSvg += `<rect x="${i * bw2 + 2}" y="${H - 18 - h}" width="${bw2 - 4}" height="${h}" rx="2" fill="${c}" opacity=".8"/><text x="${i * bw2 + bw2 / 2}" y="${H - 4}" fill="#7d8ea1" font-size="10" font-family="monospace" text-anchor="middle">${k}</text>`; }
+    const rest = T.rest.map((g) => { const p = g.p, bg = p >= 0.5 ? `rgba(62,207,142,${(0.1 + (p - 0.5) * 1.2).toFixed(2)})` : `rgba(239,91,91,${(0.1 + (0.5 - p) * 1.2).toFixed(2)})`;
+      return `<div style="background:${bg}">W${g.w} ${g.neutral ? "vs" : g.home ? "vs" : "@"} <span style="color:${col(g.opp)}">${g.opp}</span><b>${Math.round(p * 100)}%</b></div>`; }).join("");
+    $("seTeam").innerHTML = `<div class="se-team"><h3><span>${tname(t)} <span class="dim" style="font-size:13px;font-weight:400">${recStr(T)} · ${T.div} · rating ${T.rating > 0 ? "+" : ""}${T.rating.toFixed(1)}</span></span><button data-close>close</button></h3>
+      <div class="dim mono" style="font-size:12px">Projected ${T.proj_w.toFixed(1)} wins · playoffs ${Math.round(T.playoff * 100)}% · division ${Math.round(T.div_title * 100)}% · Super Bowl ${(T.sb * 100).toFixed(1)}%</div>
+      <div class="se-tgrid"><div><h4>Playoff seed</h4><svg viewBox="0 0 ${W} ${H}">${seedSvg}</svg></div>
+        <div><h4>Final win total</h4><svg viewBox="0 0 ${W} ${H}">${winSvg}</svg></div>
+        <div><h4>Remaining games · model win %</h4><div class="rest">${rest || '<span class="dim">Season complete</span>'}</div></div></div></div>`;
   }
 
   // ---------------- fantasy ----------------

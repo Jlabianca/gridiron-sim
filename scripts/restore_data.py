@@ -52,3 +52,15 @@ best = max([x for x in (live, repo) if x], key=lambda x: x.get("updated", ""), d
 if best:
     json.dump(best, open(path, "w"))
     print(f"restore: odds from {best.get('updated')}")
+
+# power-rating history: union of weeks (live copy wins for the same week)
+path = "site/data/ratings_history.json"
+live, repo = fetch("ratings_history.json"), load(path)
+if live or repo:
+    out = repo or live
+    if live and repo and live.get("season") == repo.get("season"):
+        out = dict(repo, weeks=dict(repo.get("weeks", {}), **live.get("weeks", {})))
+    elif live:
+        out = live
+    json.dump(out, open(path, "w"))
+    print(f"restore: ratings history weeks {sorted(out['weeks'], key=int)}")

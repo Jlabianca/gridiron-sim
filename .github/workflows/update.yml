@@ -53,6 +53,10 @@ jobs:
           grep "^edges:" edges.log | sed 's/^/::notice title=Edges::/' || true
       - name: Fantasy projections
         run: node scripts/fantasy.js site/data/model.json site/data/fantasy.json 2500 | tee fantasy.log
+      - name: Season simulation + power ratings
+        run: |
+          node scripts/season.js site/data/model.json site/data/season.json 800 10000 | tee season.log
+          node scripts/ratings_history.js site/data/season.json site/data/ratings_history.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

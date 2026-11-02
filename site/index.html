@@ -18,6 +18,7 @@
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
     <button class="tab" data-tab="fantasy" role="tab">Fantasy</button>
     <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
+    <button class="tab" data-tab="season" role="tab">Season</button>
     <button class="tab" data-tab="edges" role="tab">Edge board</button>
     <button class="tab" data-tab="score" role="tab">Scorecard</button>
   </nav>
@@ -157,6 +158,24 @@
       </div>
     </div>
     <p class="note">Probabilities come from repeating the simulated game thousands of times. The model is a simple play-level simulation and has not been proven to beat the market — treat edges as leads to research, not as bets.</p>
+  </section>
+
+  <!-- SEASON -->
+  <section id="tab-season" class="pane">
+    <div class="edhead">
+      <div><h2>Season</h2><p class="mono dim" id="seMeta"></p></div>
+      <details class="edhelp"><summary>How this works</summary>
+        <p>Every remaining game is simulated with the play-by-play engine. The rest of the season is then replayed 10,000 times, drawing one simulated result per game, to build standings, the 7-team playoff fields, the bracket and the draft order.
+        Tiebreakers are simplified (win %, head-to-head, division record, conference record, point differential).
+        <b>Power rating</b> = points better than an average team on a neutral field (offense + defense), measured by simulating each team against a spread of opponents.</p>
+      </details>
+    </div>
+    <div class="edbar">
+      <div class="seg" id="seView"><button data-v="odds" class="on">Playoff odds</button><button data-v="power">Power rankings</button><button data-v="draft">Draft order</button></div>
+      <div class="seg" id="seConf"><button data-v="" class="on">Both</button><button data-v="AFC">AFC</button><button data-v="NFC">NFC</button></div>
+    </div>
+    <div id="seTeam"></div>
+    <div id="seBody"></div>
   </section>
 
   <!-- EDGE BOARD -->
