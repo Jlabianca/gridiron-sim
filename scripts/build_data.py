@@ -11,12 +11,17 @@ player directory and the nfldata schedule (with closing spread/total lines).
 import argparse
 import json
 import math
+import re
 import os
+import sys
 import urllib.request
 from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import weather as wx  # noqa: E402
 
 NFLVERSE = "https://github.com/nflverse/nflverse-data/releases/download"
 FILES = {
@@ -381,6 +386,46 @@ def main():
         short = (parts[0][0] + ". " + " ".join(parts[1:])) if len(parts) > 1 else name
         return name, short, pos
 
+    # ---------------- quarterbacks ----------------
+    # Each QB's own rates (current season full weight, prior season 0.35), shrunk toward a
+    # "backup QB" baseline so a guy with 40 dropbacks doesn't look like a star or a disaster.
+    # on scrambles nflverse records the QB as the rusher, so take whichever id is present
+    both["qb_id"] = both.passer_player_id.fillna(both.rusher_player_id)
+    scb["qb_id"] = scb.passer_player_id.fillna(scb.rusher_player_id)
+    qbd = both[both.dropback & both.qb_id.notna()].copy()
+    qbd["qw"] = np.where(qbd.season == a.season, 1.0, 0.35)
+    tot_db = qbd.groupby("qb_id").size()
+    def qb_raw(g):
+        at = g[g.attempt]; cp = at[at.complete_pass == 1]
+        return dict(n=float(g.qw.sum()), n_att=float(at.qw.sum()), n_comp=float(cp.qw.sum()),
+                    sack=wmean(g.is_sack, g.qw), scramble=wmean(g.scramble, g.qw),
+                    comp=wmean(at.complete_pass, at.qw), int=wmean(at.interception, at.qw),
+                    ypc=wmean(cp.yards_gained, cp.qw))
+    backup = qb_raw(qbd[qbd.qb_id.isin(tot_db[tot_db < 200].index)])
+    league["qb_backup"] = {k: round(backup[k], 4) for k in ("sack", "scramble", "comp", "int", "ypc")}
+    qb_rates = {}
+    for pid, g in qbd.groupby("qb_id"):
+        r = qb_raw(g)
+        qb_rates[pid] = dict(
+            sack=round(shrink(r["sack"], r["n"], backup["sack"], 200), 4),
+            scramble=round(shrink(r["scramble"], r["n"], backup["scramble"], 150), 4),
+            comp=round(shrink(r["comp"], r["n_att"], backup["comp"], 150), 4),
+            int=round(shrink(r["int"], r["n_att"], backup["int"], 400), 4),
+            ypc=round(shrink(r["ypc"], r["n_comp"], backup["ypc"], 100), 3),
+            dropbacks=int(round(r["n"])))
+    # the QB mix behind each team's current passing rates (same weights as the team rates)
+    qbt = weighted(scb[scb.dropback & scb.qb_id.notna()], "posteam")
+    for t in teams:
+        g = qbt[qbt.posteam == t]
+        share = g.groupby("qb_id").w.sum()
+        share = share / share.sum()
+        mix = {k: 0.0 for k in ("sack", "scramble", "comp", "int", "ypc")}
+        for pid, sh in share.items():
+            rr = qb_rates.get(pid, league["qb_backup"])
+            for k in mix:
+                mix[k] += sh * rr[k]
+        out_teams[t]["off"]["qb_mix"] = {k: round(v, 4) for k, v in mix.items()}
+
     pw = game_weights(cur, "posteam", PLAYER_HALF_LIFE)
     cs = cur[cur.scrimmage].copy()
     cs["w"] = [pw.get((t, g), 0) for t, g in zip(cs.posteam, cs.game_id)]
@@ -434,6 +479,19 @@ def main():
             if p["rush_share"] < 0.002 and p["tgt_share"] < 0.002 and p["db"] == 0:
                 continue
             plist.append(p)
+        # every active QB on the roster is available as a starter, even with no snaps yet
+        have = {p["id"] for p in plist}
+        for pid in rost[(rost.team == t) & (rost.position == "QB") & (rost.status == "ACT")].gsis_id:
+            if pid in have or not isinstance(pid, str):
+                continue
+            name, short, pos = pinfo(pid, pid)
+            status = inj.get(pid, "")
+            plist.append(dict(id=pid, name=name, short=short, pos="QB", status=status,
+                              out=status in ("Out", "Doubtful"), gone=False, catch=team_comp, rush_y=[], rec_y=[],
+                              db=0.0, rush_share=0.0, rush_rz_share=0.0, tgt_share=0.0, tgt_rz_share=0.0))
+        for p in plist:
+            if p["pos"] == "QB":
+                p["qb"] = qb_rates.get(p["id"], dict(league["qb_backup"], dropbacks=0))
         plist.sort(key=lambda p: -(p["db"] * 3 + p["rush_share"] + p["tgt_share"]))
         out_teams[t]["players"] = plist
 
@@ -451,16 +509,67 @@ def main():
         else:
             out_teams[t]["kicker"] = dict(id=t + "-K", name=t + " K", short=t + " K")
 
+    # ---------------- weather ----------------
+    # effects measured by scripts/fit_weather.py, shrunk toward zero by their noise (b^2 / (b^2 + se^2))
+    wpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "weather_effects.json")
+    if os.path.exists(wpath):
+        we = json.load(open(wpath))
+        eff = {}
+        for key, coefs in we["effects"].items():
+            eff[key] = {}
+            for f, b in coefs.items():
+                se = we["se"][key][f]
+                eff[key][f] = round(b * b * b / (b * b + se * se), 6) if b else 0.0
+        league["weather"] = dict(effects=eff, base=we["base"], seasons=we["seasons"])
+
+    # observed weather text for completed games (rain/snow), used for backtests
+    wtext = pd.read_parquet(os.path.join(a.raw, f"pbp_{a.season}.parquet"), columns=["game_id", "weather"]).dropna().drop_duplicates("game_id")
+    wtext = dict(zip(wtext.game_id, wtext.weather.str.lower()))
+
     # ---------------- schedule ----------------
     gs = games[(games.season == a.season) & (games.game_type == "REG")]
+    today = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None)
     sched = []
+    n_fc = n_fc_fail = 0
     for _, x in gs.iterrows():
+        sid = x.stadium_id if isinstance(x.stadium_id, str) else ""
+        roof = wx.roof_for(sid, x.roof if isinstance(x.roof, str) else "")
+        indoor = roof != "outdoor"
+        wthr = None
+        gday = pd.Timestamp(x.gameday)
+        played = not pd.isna(x.home_score) or (a.week is not None and x.week <= a.week)
+        if indoor:
+            wthr = dict(source="indoor", roof=roof)
+        elif played and (x.game_id in wtext or not pd.isna(x.temp)):
+            # recent seasons leave temp/wind empty and only fill the text, e.g. "Rain Temp: 78° F, ... Wind: E 9 mph"
+            txt = wtext.get(x.game_id, "")
+            mt = re.search(r"temp:\s*(-?\d+)", txt); mw = re.search(r"wind:\s*\w*\s*(\d+)\s*mph", txt)
+            temp = x.temp if not pd.isna(x.temp) else (float(mt.group(1)) if mt else None)
+            wind = x.wind if not pd.isna(x.wind) else (float(mw.group(1)) if mw else None)
+            snow = any(k in txt for k in ("snow", "flurr", "sleet"))
+            rain = (not snow) and any(k in txt for k in ("rain", "shower", "drizzle", "storm")) and "chance" not in txt
+            wthr = dict(source="observed", roof=roof, temp=None if temp is None else int(temp), wind=None if wind is None else int(wind),
+                        rain=1.0 if rain else 0.0, snow=1.0 if snow else 0.0)
+        elif not played and 0 <= (gday - today).days <= 14 and sid in wx.STADIUMS:
+            lat, lon, _ = wx.STADIUMS[sid]
+            try:
+                fc = wx.forecast(lat, lon, str(x.gameday), int(str(x.gametime)[:2]))
+                if fc:
+                    wthr = dict(source="forecast", roof=roof, **fc); n_fc += 1
+            except Exception as e:
+                n_fc_fail += 1
+                if n_fc_fail == 1:
+                    print("  forecast unavailable:", e)
+        if wthr and wthr["source"] != "indoor":
+            wthr["features"] = wx.features(wthr.get("temp"), wthr.get("wind"), wthr.get("rain"), wthr.get("snow"), False)
         sched.append(dict(game_id=x.game_id, week=int(x.week), date=str(x.gameday), time=str(x.gametime),
                           away=x.away_team, home=x.home_team,
                           away_score=None if pd.isna(x.away_score) else int(x.away_score),
                           home_score=None if pd.isna(x.home_score) else int(x.home_score),
                           spread=None if pd.isna(x.spread_line) else float(x.spread_line),
-                          total=None if pd.isna(x.total_line) else float(x.total_line)))
+                          total=None if pd.isna(x.total_line) else float(x.total_line),
+                          stadium=x.stadium if isinstance(x.stadium, str) else "", weather=wthr))
+    print(f"weather: {n_fc} forecasts fetched, {n_fc_fail} failed")
 
     model = dict(
         generated=pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d %H:%M UTC"),

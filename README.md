@@ -19,22 +19,25 @@ The site is fully static: one JSON model file and plain JavaScript, with no serv
 - **Players**: carry and target shares come from recent games (half-life of 3 games), with separate red-zone and goal-line shares. Each player has a catch rate and their own yardage samples, so a deep threat and a check-down back produce different stat lines.
 - **Situations**: league tables cover 4th-down go/punt/FG decisions, field-goal make rate by distance, kickoff and punt field position, penalties, field-zone yardage near the goal line, the clock (normal pace, hurry-up, milking the clock), kneel-downs, timeouts and overtime.
 
+- **Weather**: the effects of wind (above 10 mph), cold (below 40°F), rain and snow on pass rate, sacks, completions, interceptions, yards per completion and carry, fumbles, and field-goal and extra-point accuracy. These are measured from 2018–2026 play-by-play by `scripts/fit_weather.py`, which compares every offense and defense with its own season average so that cold-weather teams being good or bad doesn't skew the results. Noisy effects are shrunk toward zero. Upcoming games get a forecast for kickoff ±3 hours from [Open-Meteo](https://open-meteo.com) (free, no API key). Domes and retractable roofs are treated as indoor. Completed games use the conditions that were actually reported. On the site you can also ignore the weather or enter your own.
+- **Quarterbacks**: each QB's own sack, scramble, completion and interception rates and yards per completion, shrunk toward a "backup QB" baseline. The team's passing numbers are adjusted by how the starter compares with the QB mix that produced them, so a backup starting lowers the offense. Every active QB on the roster can be picked as the starter in the Injuries / usage tab.
+
 `site/js/sim.js` plays the game one snap at a time from those tables. `scripts/calibrate.js` then adjusts two global constants so the simulated league matches the real season's plays per game and points per game.
 
-### Backtest (2026 weeks 5–7, 43 games, each week using only data available before it)
+### Backtest (2026 weeks 5–8, 56 games, each week using only data available before it)
 
-| | Model | Closing market |
-|---|---|---|
-| Margin error (MAE) | 9.35 | 9.07 |
-| Total error (MAE) | 10.80 | 10.34 |
-| Mean total | 46.0 | 45.1 (actual 45.8) |
+| | v1 (no QB or weather) | v2 (QB + weather) | Closing market |
+|---|---|---|---|
+| Margin error (MAE) | 9.67 | 9.65 | 9.31 |
+| Total error (MAE) | 10.97 | 10.69 | 10.68 |
+| Picked the winner | 55% | 63% | 68% |
 
-The model's margins correlate 0.71 with the closing spreads. Its rushing-yard projections correlate 0.69 with actual results, receiving yards 0.42 and passing yards 0.30. **Bottom line: it's sensible, but it doesn't beat the closing line.** Treat a gap between the model and the market as a reason to dig in, not as a bet. To rerun the backtest:
+v2's margins correlate 0.74 with the closing spreads. Its rushing-yard projections correlate 0.69 with actual results, receiving yards 0.42 and passing yards 0.30. **Bottom line: it's sensible, but it doesn't beat the closing line.** Treat a gap between the model and the market as a reason to dig in, not as a bet. To rerun the backtest:
 
 ```bash
-for w in 5 6 7; do python scripts/build_data.py --week $w --out backtest/model_w$w.json; node scripts/calibrate.js backtest/model_w$w.json; done
-python scripts/export_actuals.py --season 2026 --weeks 5 6 7
-node scripts/backtest.js 5 6 7
+for w in 5 6 7 8; do python scripts/build_data.py --week $w --out backtest/model_w$w.json; node scripts/calibrate.js backtest/model_w$w.json; done
+python scripts/export_actuals.py --season 2026 --weeks 5 6 7 8
+node scripts/backtest.js 5 6 7 8          # add --no-weather / --no-qb to compare
 ```
 
 ## Run locally
@@ -56,7 +59,8 @@ Opening `index.html` straight from disk won't work, because the page has to fetc
 
 ## Known limitations / ideas
 
-- No weather, rest days, coaching changes or QB-specific adjustments beyond the team's recent dropbacks.
+- No rest days, travel or coaching changes. QB effects only cover passing efficiency, not play-calling.
+- Weather effects are averages over every regular-season game from 2018 to 2026. Snow is rare (around 0.7% of games), so its effects are uncertain and shrunk heavily.
 - Two-point conversions, onside kicks and return touchdowns on kicks aren't modelled.
 - Receiver yardage samples are small early in the season and get shrunk toward the team average.
 - Ideas: pulling live prop lines from an odds API, a per-week comparison table of model vs. market, and tracking the model's results over the season.

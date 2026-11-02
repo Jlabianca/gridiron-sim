@@ -31,8 +31,10 @@ jobs:
         with:
           node-version: "20"
       - run: pip install -r requirements.txt
-      - name: Build model from nflverse
-        run: python scripts/build_data.py --refresh
+      - name: Build model from nflverse (+ game-day forecasts)
+        run: |
+          python scripts/build_data.py --refresh | tee build.log
+          grep "^weather:" build.log | sed 's/^/::notice title=Forecasts::/'
       - name: Calibrate clock and scoring
         run: node scripts/calibrate.js site/data/model.json
       - uses: actions/configure-pages@v5

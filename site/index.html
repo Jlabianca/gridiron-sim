@@ -26,6 +26,17 @@
     <select id="awaySel"></select><span>@</span><select id="homeSel"></select>
     <label class="chk"><input type="checkbox" id="neutralChk"> neutral site</label>
   </div>
+  <div class="wx">
+    <span class="mono" id="wxLabel">weather –</span>
+    <select id="wxMode" title="Weather used by the simulation">
+      <option value="auto">Forecast / actual</option><option value="none">Ignore weather</option><option value="custom">Custom…</option>
+    </select>
+    <span id="wxCustom" class="hidden">
+      <input id="wxTemp" type="number" value="35" title="Temperature °F"> °F
+      <input id="wxWind" type="number" value="20" title="Wind mph"> mph
+      <select id="wxPrecip"><option value="none">dry</option><option value="rain">rain</option><option value="snow">snow</option></select>
+    </span>
+  </div>
 </section>
 
 <main>
@@ -37,7 +48,7 @@
         <div class="trow" id="rowHome"><i class="bar"></i><span class="abbr"></span><span class="pts">0</span></div>
       </div>
       <div class="clockbox"><div id="qtr">1ST</div><div id="clock">15:00</div></div>
-      <div class="situation"><span id="dd">KICKOFF</span><span id="spot"></span><span id="poss"></span></div>
+      <div class="situation"><span id="wxChip" class="hidden"></span><span id="dd">KICKOFF</span><span id="spot"></span><span id="poss"></span></div>
     </div>
 
     <div class="fieldwrap">
@@ -100,6 +111,7 @@
 
   <!-- ROSTER -->
   <section id="tab-roster" class="pane">
+    <div class="qbpick" id="qbPick"></div>
     <p class="dim">Players marked out by the injury report (Out/Doubtful), or no longer active on the roster, start unchecked. Toggle anyone in or out — their carries and targets are re-split among the rest. Changes apply to both tabs.</p>
     <div class="rosters" id="rosters"></div>
   </section>

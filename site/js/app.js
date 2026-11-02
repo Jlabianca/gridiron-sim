@@ -14,6 +14,7 @@
   let idx = -1, playing = false, timer = null, speed = 1;
   let projResult = null, projStale = true, worker = null;
   const lines = {}; // user-entered prop lines: key `${id}|${stat}`
+  let qbSel = { away: "", home: "" }; // "" = automatic (most recent starter who isn't ruled out)
 
   // ---------------- boot ----------------
   fetch("data/model.json").then((r) => r.json()).then((m) => {
@@ -42,6 +43,8 @@
       if ($("awaySel").value !== $("homeSel").value) selectGame({ away: $("awaySel").value, home: $("homeSel").value });
     };
     $("neutralChk").onchange = () => { newGame(seed); projStale = true; };
+    $("wxMode").onchange = () => { $("wxCustom").classList.toggle("hidden", $("wxMode").value !== "custom"); weatherChanged(); };
+    ["wxTemp", "wxWind", "wxPrecip"].forEach((id) => ($(id).onchange = weatherChanged));
     renderGames();
   }
   function renderGames() {
@@ -62,14 +65,49 @@
     cur = { away: g.away, home: g.home };
     $("awaySel").value = g.away; $("homeSel").value = g.home;
     outSet = new Set(NFLSim.defaultOut(model, [g.away, g.home]));
+    qbSel = { away: "", home: "" };
     document.documentElement.style.setProperty("--away", col(g.away));
     document.documentElement.style.setProperty("--home", col(g.home));
-    renderGames(); renderRoster();
+    renderGames(); renderRoster(); renderWeather();
     projStale = true; projResult = null;
     $("projOut").classList.add("hidden"); $("runInfo").textContent = "";
     newGame(s || randSeed());
   }
   const randSeed = () => Math.floor(Math.random() * 1e9);
+
+  // ---------------- weather ----------------
+  function wxFeatures(temp, wind, precip) { // same definitions as scripts/weather.py
+    return { wind: Math.max(0, Math.min(30, (wind == null ? 8 : wind) - 10)), cold: Math.max(0, Math.min(45, 40 - (temp == null ? 60 : temp))),
+      rain: precip === "rain" ? 1 : 0, snow: precip === "snow" ? 1 : 0 };
+  }
+  function currentWeather() {
+    const mode = $("wxMode").value;
+    if (mode === "none") return { features: null, label: "weather ignored" };
+    if (mode === "custom") {
+      const t = +$("wxTemp").value, w = +$("wxWind").value, p = $("wxPrecip").value;
+      return { features: wxFeatures(t, w, p), label: `custom · ${t}°F · wind ${w} mph${p !== "none" ? " · " + p : ""}` };
+    }
+    const g = schedFor(cur.away, cur.home) || model.schedule.find((x) => x.away === cur.away && x.home === cur.home);
+    const w = g && g.weather;
+    if (!w) return { features: null, label: "no forecast yet (neutral)" };
+    if (w.source === "indoor") return { features: null, label: w.roof === "dome" ? "dome" : "roof (treated as closed)" };
+    const parts = [`${w.temp}°F`, `wind ${w.wind} mph`];
+    if (w.precip_prob != null) parts.push(`${w.precip_prob}% precip`);
+    if (w.snow) parts.push("snow"); else if (w.rain >= 0.5) parts.push("rain");
+    return { features: w.features, label: `${w.source === "forecast" ? "forecast" : "actual"} · ${parts.join(" · ")}` };
+  }
+  function renderWeather() {
+    const w = currentWeather();
+    $("wxLabel").textContent = w.label;
+    const f = w.features, bad = f && (f.wind >= 5 || f.cold >= 10 || f.rain >= 0.5 || f.snow >= 0.5);
+    $("wxChip").textContent = bad ? "☁ " + w.label.replace(/^(forecast|actual|custom) · /, "") : "";
+    $("wxChip").classList.toggle("hidden", !bad);
+  }
+  function weatherChanged() { renderWeather(); projStale = true; newGame(seed); if ($("tab-proj").classList.contains("active")) runProjections(); }
+  function simOpts() {
+    return { away: cur.away, home: cur.home, out: [...outSet], neutral: $("neutralChk").checked,
+      weather: currentWeather().features, qb: { away: qbSel.away || undefined, home: qbSel.home || undefined } };
+  }
 
   // ---------------- tabs ----------------
   function initTabs() {
@@ -106,7 +144,7 @@
     pause();
     seed = s;
     $("seedLbl").textContent = seed;
-    game = NFLSim.simulateGame(model, { away: cur.away, home: cur.home, seed, log: true, out: [...outSet], neutral: $("neutralChk").checked });
+    game = NFLSim.simulateGame(model, Object.assign(simOpts(), { seed, log: true }));
     idx = -1;
     $("finalBox").classList.add("hidden");
     drawFieldBase();
@@ -301,7 +339,7 @@
   function runProjections() {
     if (!model) return;
     const n = +$("nSel").value;
-    const opts = { away: cur.away, home: cur.home, out: [...outSet], neutral: $("neutralChk").checked, seed: 12345 };
+    const opts = Object.assign(simOpts(), { seed: 12345 });
     $("btnRun").disabled = true; $("prog").style.width = "0%";
     $("runInfo").textContent = `simulating ${n.toLocaleString()} games…`;
     const t0 = performance.now();
@@ -435,10 +473,24 @@
           <span>${(p.rush_share * 100).toFixed(0)}%</span><span>${(p.tgt_share * 100).toFixed(0)}%</span></label>`).join("") + "</div>";
     };
     $("rosters").innerHTML = block(cur.away) + block(cur.home);
+    const qbBlock = (side) => {
+      const t = cur[side], qbs = model.teams[t].players.filter((p) => p.pos === "QB");
+      const auto = qbs.filter((p) => !outSet.has(p.id) && p.db > 0).sort((a, b) => b.db - a.db)[0] || qbs.find((p) => !outSet.has(p.id));
+      const pick = qbs.find((p) => p.id === qbSel[side]) || auto;
+      const q = pick && pick.qb, mix = model.teams[t].off.qb_mix;
+      const note = q && mix ? `vs. team's recent QB play: comp ${((q.comp - mix.comp) * 100).toFixed(1)} pts · INT ${((q.int - mix.int) * 100).toFixed(1)} pts · sacks ${((q.sack - mix.sack) * 100).toFixed(1)} pts · yds/comp ${((q.ypc / mix.ypc - 1) * 100).toFixed(0)}% · ${q.dropbacks} dropbacks of data` : "";
+      return `<div class="team"><h3 style="color:${col(t)}">${t} starting QB</h3><select data-side="${side}">
+        <option value="">Auto${auto ? " — " + auto.name : ""}</option>${qbs.map((p) => `<option value="${p.id}" ${qbSel[side] === p.id ? "selected" : ""}>${p.name}${p.status ? " (" + p.status + ")" : ""}${p.qb ? " · " + p.qb.dropbacks + " db" : ""}</option>`).join("")}
+        </select><div class="qbnote">${note}</div></div>`;
+    };
+    $("qbPick").innerHTML = qbBlock("away") + qbBlock("home");
+    $("qbPick").querySelectorAll("select").forEach((sel) => (sel.onchange = () => {
+      qbSel[sel.dataset.side] = sel.value; projStale = true; renderRoster(); newGame(seed);
+    }));
     $("rosters").querySelectorAll("input").forEach((c) => (c.onchange = () => {
       if (c.checked) outSet.delete(c.dataset.id); else outSet.add(c.dataset.id);
-      c.closest("label").classList.toggle("off", !c.checked);
       projStale = true;
+      renderRoster();
       newGame(seed);
     }));
   }

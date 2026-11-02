@@ -37,20 +37,27 @@
   function fourthDist(d) { return d <= 1 ? 0 : d <= 3 ? 1 : d <= 6 ? 2 : 3; }
 
   // ---------- team preparation ----------
-  function prepTeam(model, abbr, outIds) {
+  function prepTeam(model, abbr, outIds, qbId) {
     const T = model.teams[abbr];
     if (!T) throw new Error("No data for team " + abbr);
     const L = model.league;
     const active = T.players.filter((p) => !outIds.has(p.id));
     const qbs = active.filter((p) => p.pos === "QB" && p.db > 0).sort((a, b) => b.db - a.db);
-    const qb = qbs[0] || active.find((p) => p.pos === "QB") || { id: abbr + "-QB", name: abbr + " QB", short: abbr + " QB", pos: "QB", rush_y: [], rec_y: [] };
+    const chosen = qbId ? T.players.find((p) => p.id === qbId) : null;
+    const qb = chosen || qbs[0] || active.find((p) => p.pos === "QB") || { id: abbr + "-QB", name: abbr + " QB", short: abbr + " QB", pos: "QB", rush_y: [], rec_y: [] };
+    // QB adjustment: this QB's own rates vs. the QB mix behind the team's recent passing numbers
+    const qr = qb.qb || L.qb_backup, mix = T.off.qb_mix || qr;
+    const qbAdj = qr && mix ? {
+      sack: qr.sack - mix.sack, scramble: qr.scramble - mix.scramble, comp: qr.comp - mix.comp, int: qr.int - mix.int,
+      ypcF: clamp(qr.ypc / mix.ypc, 0.8, 1.2),
+    } : { sack: 0, scramble: 0, comp: 0, int: 0, ypcF: 1 };
     const rushers = active.filter((p) => p.rush_share > 0);
     const targets = active.filter((p) => p.tgt_share > 0 && p.id !== qb.id);
     const o = T.off;
     const rushMean = mean(o.rush_yards.filter((y) => y > 0)) || 5;
     const compMean = mean(o.comp_yards.filter((y) => y > 0)) || 11;
     return {
-      abbr, T, qb, rushers, targets, kicker: T.kicker,
+      abbr, T, qb, qbAdj, rushers, targets, kicker: T.kicker,
       // rescale raw samples so the mean matches the shrunk team rate
       rushScale: clamp(o.ypr / (mean(o.rush_yards) || L.ypr), 0.8, 1.25),
       compScale: clamp(o.ypc / (mean(o.comp_yards) || L.ypc), 0.8, 1.25),
@@ -58,18 +65,32 @@
     };
   }
 
-  function matchup(model, off, def, isHome, neutral) {
-    const L = model.league, o = off.T.off, d = def.T.def;
+  // weather: features {wind, cold, rain, snow} (0 indoors) times effects fitted from 2018+ play-by-play
+  function weatherDeltas(L, f) {
+    const W = L.weather, z = { pass: 0, sack: 0, comp: 0, int: 0, compYdsF: 1, rushYdsF: 1, fumble: 0, fg: 0, xp: 0 };
+    if (!W || !f) return z;
+    const dot = (k) => { const e = W.effects[k] || {}; let s = 0; for (const n in e) s += e[n] * (f[n] || 0); return s; };
+    z.pass = dot("pass_rate") / 0.2436;              // probability change -> logit change around p ~ 0.58
+    z.sack = dot("sack_rate"); z.comp = dot("comp_rate"); z.int = dot("int_rate"); z.fumble = dot("fumble_rate");
+    z.compYdsF = clamp(1 + dot("comp_yards") / (W.base.comp_yards || 11), 0.7, 1.15);
+    z.rushYdsF = clamp(1 + dot("rush_yards") / (W.base.rush_yards || 4.3), 0.7, 1.15);
+    z.fg = dot("fg_logit"); z.xp = dot("xp_logit");
+    return z;
+  }
+
+  function matchup(model, off, def, isHome, neutral, wd) {
+    const L = model.league, o = off.T.off, d = def.T.def, q = off.qbAdj;
     const h = neutral ? 1 : (L.home_yds || 1);
     const hfa = isHome ? h : 1 / h;
+    const r = (x) => clamp(x, 0.002, 0.95);
     return {
-      sack: log5(o.sack_rate, d.sack_rate, L.sack_rate),
-      scramble: log5(o.scramble_rate, d.scramble_rate, L.scramble_rate),
-      int: log5(o.int_rate, d.int_rate, L.int_rate),
-      comp: log5(o.comp_rate, d.comp_rate, L.comp_rate),
-      compYdsF: clamp(d.ypc / L.ypc, 0.8, 1.25) * (L.yds_scale || 1) * hfa,
-      rushYdsF: clamp(d.ypr / L.ypr, 0.8, 1.25) * (L.yds_scale || 1) * hfa,
-      passOE: o.pass_oe + 0.5 * d.pass_oe,
+      sack: r(log5(r(o.sack_rate + q.sack), d.sack_rate, L.sack_rate) + wd.sack),
+      scramble: r(log5(r(o.scramble_rate + q.scramble), d.scramble_rate, L.scramble_rate)),
+      int: r(log5(r(o.int_rate + q.int), d.int_rate, L.int_rate) + wd.int),
+      comp: r(log5(r(o.comp_rate + q.comp), d.comp_rate, L.comp_rate) + wd.comp),
+      compYdsF: clamp(d.ypc / L.ypc, 0.8, 1.25) * (L.yds_scale || 1) * hfa * q.ypcF * wd.compYdsF,
+      rushYdsF: clamp(d.ypr / L.ypr, 0.8, 1.25) * (L.yds_scale || 1) * hfa * wd.rushYdsF,
+      passOE: o.pass_oe + 0.5 * d.pass_oe + wd.pass,
     };
   }
 
@@ -86,8 +107,11 @@
     const L = model.league;
     const outIds = new Set(opts.out || defaultOut(model, [opts.away, opts.home]));
     const log = !!opts.log;
-    const teams = { away: prepTeam(model, opts.away, outIds), home: prepTeam(model, opts.home, outIds) };
-    const mu = { away: matchup(model, teams.away, teams.home, false, opts.neutral), home: matchup(model, teams.home, teams.away, true, opts.neutral) };
+    const qbPick = opts.qb || {};
+    const teams = { away: prepTeam(model, opts.away, outIds, qbPick.away), home: prepTeam(model, opts.home, outIds, qbPick.home) };
+    const wd = weatherDeltas(L, opts.weather);
+    const mu = { away: matchup(model, teams.away, teams.home, false, opts.neutral, wd), home: matchup(model, teams.home, teams.away, true, opts.neutral, wd) };
+    const fumRush = clamp(L.fumble_rate_rush + wd.fumble, 0.001, 0.05);
     const other = (s) => (s === "home" ? "away" : "home");
 
     const score = { away: 0, home: 0 };
@@ -199,7 +223,7 @@
       const k = teams[side].kicker;
       const ks = stat(side, k);
       ks.xpa++;
-      let good = rand() < L.xp_make;
+      let good = rand() < shiftP(L.xp_make, wd.xp);
       if (good) { addPts(side, 1); ks.xpm++; ks.pts += 1; }
       if (log) plays[plays.length - 1].xp = good;
       if (ot && ot.bothAtStart) { endGame(); return; }
@@ -251,9 +275,10 @@
       return sigmoid(x);
     }
 
+    const shiftP = (p, dl) => (dl ? sigmoid(Math.log(p / (1 - p)) + dl) : p);
     function fgMake(dist) {
       const i = clamp(Math.floor((dist - 18) / 5), 0, L.fg_make.length - 1);
-      return dist > 68 ? 0.02 : L.fg_make[i];
+      return dist > 68 ? 0.02 : shiftP(clamp(L.fg_make[i], 0.01, 0.995), wd.fg);
     }
 
     function attemptFG() {
@@ -436,7 +461,7 @@
         player = rb.short;
         const dir = ["up the middle", "left tackle", "right guard", "right end", "left end", "left guard", "right tackle"][Math.floor(rand() * 7)];
         desc = rb.short + " " + dir + " for " + yards + (Math.abs(yards) === 1 ? " yard." : " yards.");
-        if (rand() < L.fumble_rate_rush) turnover = "Fumble";
+        if (rand() < fumRush) turnover = "Fumble";
       }
 
       // cap at goal line / own end zone
@@ -524,6 +549,7 @@
       away: opts.away, home: opts.home, score, qscore, winner, ot: !!ot,
       box, tstats, drives, plays,
       qb: { away: teams.away.qb.id, home: teams.home.qb.id },
+      weather: opts.weather || null,
     };
   }
 

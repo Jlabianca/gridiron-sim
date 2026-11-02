@@ -1,0 +1,146 @@
+{
+ "seasons": "2018-2026",
+ "features": [
+  "wind",
+  "cold",
+  "rain",
+  "snow"
+ ],
+ "effects": {
+  "pass_rate": {
+   "wind": -0.00114,
+   "cold": -0.00086,
+   "rain": -0.02697,
+   "snow": -0.01725
+  },
+  "sack_rate": {
+   "wind": 0.00036,
+   "cold": -8e-05,
+   "rain": 0.00017,
+   "snow": 0.01142
+  },
+  "comp_rate": {
+   "wind": -0.00171,
+   "cold": -0.00068,
+   "rain": -0.02416,
+   "snow": -0.03504
+  },
+  "int_rate": {
+   "wind": -0.0002,
+   "cold": 0.00025,
+   "rain": 8e-05,
+   "snow": 0.00094
+  },
+  "comp_yards": {
+   "wind": -0.04555,
+   "cold": -0.01377,
+   "rain": -0.41544,
+   "snow": 0.10976
+  },
+  "rush_yards": {
+   "wind": -0.0117,
+   "cold": -0.00821,
+   "rain": -0.11463,
+   "snow": 0.49293
+  },
+  "fumble_rate": {
+   "wind": -0.00016,
+   "cold": 0.00011,
+   "rain": 0.00145,
+   "snow": -0.00237
+  },
+  "fg_logit": {
+   "wind": -0.02646,
+   "cold": -0.01035,
+   "rain": -0.12723,
+   "snow": -0.64084
+  },
+  "xp_logit": {
+   "wind": -0.04743,
+   "cold": -0.02466,
+   "rain": -0.14801,
+   "snow": 0.3602
+  }
+ },
+ "se": {
+  "pass_rate": {
+   "wind": 0.00062,
+   "cold": 0.00047,
+   "rain": 0.00642,
+   "snow": 0.01754
+  },
+  "sack_rate": {
+   "wind": 0.00027,
+   "cold": 0.0002,
+   "rain": 0.00279,
+   "snow": 0.00746
+  },
+  "comp_rate": {
+   "wind": 0.00056,
+   "cold": 0.00041,
+   "rain": 0.00585,
+   "snow": 0.01576
+  },
+  "int_rate": {
+   "wind": 0.00017,
+   "cold": 0.00013,
+   "rain": 0.00182,
+   "snow": 0.00491
+  },
+  "comp_yards": {
+   "wind": 0.01468,
+   "cold": 0.01071,
+   "rain": 0.15524,
+   "snow": 0.42628
+  },
+  "rush_yards": {
+   "wind": 0.00825,
+   "cold": 0.00599,
+   "rain": 0.08537,
+   "snow": 0.22684
+  },
+  "fumble_rate": {
+   "wind": 0.00011,
+   "cold": 8e-05,
+   "rain": 0.00111,
+   "snow": 0.00296
+  },
+  "fg_logit": {
+   "wind": 0.01454,
+   "cold": 0.01098,
+   "rain": 0.14328,
+   "snow": 0.3885
+  },
+  "xp_logit": {
+   "wind": 0.01543,
+   "cold": 0.01157,
+   "rain": 0.20113,
+   "snow": 0.5304
+  }
+ },
+ "n": {
+  "pass_rate": 124059,
+  "sack_rate": 169766,
+  "comp_rate": 151193,
+  "int_rate": 151193,
+  "comp_yards": 97509,
+  "rush_yards": 108302,
+  "fumble_rate": 108302,
+  "fg_logit": 8688
+ },
+ "base": {
+  "pass_rate": 0.5393,
+  "sack_rate": 0.0632,
+  "comp_rate": 0.6449,
+  "int_rate": 0.0227,
+  "comp_yards": 11.0533,
+  "rush_yards": 4.2988,
+  "fumble_rate": 0.0066
+ },
+ "share_games": {
+  "wind": 0.188,
+  "cold": 0.094,
+  "rain": 0.049,
+  "snow": 0.007
+ }
+}

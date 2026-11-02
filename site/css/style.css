@@ -121,3 +121,16 @@ footer { padding: 18px 22px 30px; font-size: 11px; border-top: 1px solid var(--l
   .fieldwrap, .charts, .rosters, .boxgrid { grid-template-columns: 1fr; }
   #field { height: 200px; }
 }
+
+.wx { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.wx input { width: 58px; padding: 4px 6px; }
+#wxLabel { color: var(--dim); }
+#wxChip { color: #9fd3ff; }
+.qbpick { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+.qbpick .team { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.qbpick h3 { margin: 0 0 8px; font: 600 13px var(--mono); }
+.qbpick select { width: 100%; }
+.qbpick .qbnote { font: 11px var(--mono); color: var(--dim); margin-top: 6px; }
+@media (max-width: 860px) { .qbpick { grid-template-columns: 1fr; } }
+.situation > span:empty { display: none; }
+.picker .wx { flex-basis: 100%; justify-content: flex-end; }
