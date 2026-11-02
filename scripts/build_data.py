@@ -420,8 +420,10 @@ def main():
     # ---------------- players ----------------
     players = pd.read_csv(os.path.join(a.raw, "players.csv"), low_memory=False).set_index("gsis_id")
     rost = pd.read_csv(os.path.join(a.raw, f"rosters_w_{a.season}.csv"), low_memory=False)
-    rweek = min(target_week, int(rost.week.max()))
-    rost = rost[rost.week == rweek]
+    # each team's most recent weekly roster (teams on a bye have no rows that week)
+    rost = rost[rost.week <= target_week]
+    last_wk = rost.groupby("team").week.max()
+    rost = rost[rost.week == rost.team.map(last_wk)]
     roster_team = dict(zip(rost.gsis_id, rost.team))
     roster_status = dict(zip(rost.gsis_id, rost.status))
     inj = {}

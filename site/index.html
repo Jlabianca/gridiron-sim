@@ -16,6 +16,7 @@
     <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
     <button class="tab" data-tab="live" role="tab">Game day</button>
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
+    <button class="tab" data-tab="fantasy" role="tab">Fantasy</button>
     <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
     <button class="tab" data-tab="edges" role="tab">Edge board</button>
     <button class="tab" data-tab="score" role="tab">Scorecard</button>
@@ -87,6 +88,29 @@
         <div id="gd4th"></div>
       </div>
     </div>
+  </section>
+
+  <!-- FANTASY -->
+  <section id="tab-fantasy" class="pane">
+    <div class="edhead">
+      <div><h2>Fantasy</h2><p class="mono dim" id="ftMeta"></p></div>
+      <details class="edhelp"><summary>How to read this</summary>
+        <p>Every game is simulated thousands of times and each player's fantasy points are scored in every simulated game.
+        <b>Proj</b> is the average, the bar runs from the <b>floor</b> (10th percentile) to the <b>ceiling</b> (90th percentile), and the dot is the median.
+        <b>Boom</b> and <b>bust</b> are the chances of a big game or a dud for that position. Tick 2–4 players to compare them head to head.
+        Scoring: 0.04/pass yd, 4/pass TD, −2/INT, 0.1/rush or rec yd, 6/TD, PPR 1 / half 0.5 / standard 0 per catch, −2/fumble lost; K 3/4/5 by distance + 1/XP; standard D/ST.</p>
+      </details>
+    </div>
+    <div class="edbar">
+      <div class="seg" id="ftWeek"></div>
+      <div class="seg" id="ftFmt"><button data-v="ppr" class="on">PPR</button><button data-v="half">Half</button><button data-v="std">Standard</button></div>
+      <div class="seg" id="ftPos"><button data-v="" class="on">All</button><button data-v="QB">QB</button><button data-v="RB">RB</button><button data-v="WR">WR</button><button data-v="TE">TE</button><button data-v="FLEX">FLEX</button><button data-v="K">K</button><button data-v="DST">D/ST</button></div>
+      <select id="ftSort"><option value="mean">Sort: projection</option><option value="ceil">Sort: ceiling</option><option value="floor">Sort: floor</option><option value="boom">Sort: boom %</option></select>
+      <select id="ftTeam"><option value="">All teams</option></select>
+      <input id="ftSearch" type="search" placeholder="Search player">
+    </div>
+    <div id="ftCompare"></div>
+    <table class="props ft" id="ftTable"></table>
   </section>
 
   <!-- PROJECTIONS -->

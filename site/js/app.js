@@ -173,6 +173,7 @@
       if (t.dataset.tab === "score") loadScorecard();
       if (t.dataset.tab === "edges") loadEdges();
       if (t.dataset.tab === "live") renderGameDay();
+      if (t.dataset.tab === "fantasy") loadFantasy();
     }));
   }
 
@@ -228,6 +229,106 @@
     resetBoard();
     startWP();
     $("btnPlay").textContent = "▶ Play";
+  }
+
+  // ---------------- fantasy ----------------
+  let fant = null, fantLoading = null;
+  const ft = { week: null, fmt: "ppr", pos: "", sort: "mean", team: "", q: "", cmp: [] };
+  const BOOM = { QB: [25, 12], RB: [20, 7], WR: [20, 7], TE: [15, 5], K: [12, 5], DST: [12, 3] };
+  function fetchFantasy() {
+    if (!fantLoading) fantLoading = fetch("data/fantasy.json?" + (model ? model.generated : "")).then((r) => { if (!r.ok) throw 0; return r.json(); }).then((f) => (fant = f)).catch(() => null);
+    return fantLoading;
+  }
+  // P(X >= t) from 21 evenly spaced quantiles (linear interpolation)
+  function pAtLeast(q, t) {
+    if (t <= q[0]) return 1; if (t > q[20]) return 0;
+    for (let i = 0; i < 20; i++) if (t <= q[i + 1]) { const f = q[i + 1] === q[i] ? 1 : (t - q[i]) / (q[i + 1] - q[i]); return 1 - (i + f) / 20; }
+    return 0;
+  }
+  function sampleQ(q, u) { const x = u * 20, i = Math.min(19, Math.floor(x)); return q[i] + (q[i + 1] - q[i]) * (x - i); }
+  function thresholds(pos, fmt) { const [b, d] = BOOM[pos] || [20, 7]; const k = ["RB", "WR", "TE"].includes(pos) ? (fmt === "half" ? 0.9 : fmt === "std" ? 0.8 : 1) : 1; return [b * k, d * k]; }
+  function loadFantasy() {
+    fetchFantasy().then((f) => {
+      if (!f) { $("ftTable").innerHTML = `<tr><td class="dim">No projections yet. They appear after the next daily update.</td></tr>`; return; }
+      if (ft.week == null) {
+        // default to the week with the most games left
+        const cnt = (w) => f.games.filter((g) => g.week === w).length;
+        ft.week = f.weeks.slice().sort((a, b) => cnt(b) - cnt(a))[0];
+        $("ftWeek").innerHTML = f.weeks.filter((w) => cnt(w)).map((w) => `<button data-v="${w}" class="${w === ft.week ? "on" : ""}">Week ${w} <span class="dim">(${cnt(w)} game${cnt(w) === 1 ? "" : "s"})</span></button>`).join("");
+        const segs = [["ftWeek", "week", true], ["ftFmt", "fmt"], ["ftPos", "pos"]];
+        for (const [id, key, num] of segs) $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => {
+          $(id).querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          ft[key] = num ? +b.dataset.v : b.dataset.v; if (key === "week") ft.cmp = []; renderFantasy();
+        }));
+        $("ftSort").onchange = () => { ft.sort = $("ftSort").value; renderFantasy(); };
+        $("ftTeam").onchange = () => { ft.team = $("ftTeam").value; renderFantasy(); };
+        $("ftSearch").oninput = () => { ft.q = $("ftSearch").value.toLowerCase(); renderFantasy(); };
+        $("ftTable").addEventListener("change", (e) => {
+          const c = e.target.closest("input[data-cmp]"); if (!c) return;
+          if (c.checked) { if (ft.cmp.length >= 4) { c.checked = false; return; } ft.cmp.push(c.dataset.cmp); } else ft.cmp = ft.cmp.filter((x) => x !== c.dataset.cmp);
+          renderFantasy();
+        });
+        $("ftCompare").addEventListener("click", (e) => { if (e.target.closest("button[data-clear]")) { ft.cmp = []; renderFantasy(); } });
+      }
+      renderFantasy();
+    });
+  }
+  function renderFantasy() {
+    const f = fant, fmt = ft.fmt;
+    const teams = [...new Set(f.players.filter((p) => p.week === ft.week).map((p) => p.team))].sort();
+    if ($("ftTeam").options.length !== teams.length + 1) $("ftTeam").innerHTML = `<option value="">All teams</option>` + teams.map((t) => `<option ${t === ft.team ? "selected" : ""}>${t}</option>`).join("");
+    $("ftMeta").textContent = `Week ${ft.week} · ${f.sims.toLocaleString()} sims per game · built ${f.generated}`;
+    const gw = Object.fromEntries(f.games.map((g) => [g.game, g]));
+    let list = f.players.filter((p) => p.week === ft.week)
+      .filter((p) => (!ft.pos || (ft.pos === "FLEX" ? ["RB", "WR", "TE"].includes(p.pos) : p.pos === ft.pos)) && (!ft.team || p.team === ft.team) && (!ft.q || p.name.toLowerCase().includes(ft.q)));
+    const val = (p) => { const q = p.q[fmt], [b] = thresholds(p.pos, fmt); return ft.sort === "ceil" ? q[18] : ft.sort === "floor" ? q[2] : ft.sort === "boom" ? pAtLeast(q, b) : p.mean[fmt]; };
+    list.sort((a, b) => val(b) - val(a));
+    if (!ft.pos && !ft.q && !ft.team) list = list.filter((p) => p.mean[fmt] >= 3);
+    list = list.slice(0, 250);
+    const maxC = Math.max(10, ...list.slice(0, 60).map((p) => p.q[fmt][18]));
+    const wxIcon = (g) => { const w = g && g.weather; if (!w || !w.features) return ""; const fz = w.features; return fz.snow > 0 ? " ❄️" : fz.rain >= 0.5 ? " 🌧️" : fz.wind >= 8 ? " 💨" : fz.cold >= 15 ? " 🥶" : ""; };
+    $("ftTable").innerHTML = `<tr><th>#</th><th>Player</th><th>Opp</th><th>Proj</th><th>Floor ─ median ─ ceiling</th><th>Floor</th><th>Ceiling</th><th>Boom</th><th>Bust</th><th title="Tick 2–4 players to compare">Compare</th></tr>` +
+      list.map((p, i) => {
+        const q = p.q[fmt], [b, d] = thresholds(p.pos, fmt), boom = pAtLeast(q, b), bust = 1 - pAtLeast(q, d), on = ft.cmp.includes(p.id + "|" + p.week);
+        const X = (v) => Math.max(0, Math.min(100, (v / maxC) * 100));
+        const name = p.pos === "DST" || p.pos === "K" ? p.name : `<span class="plink" data-pid="${p.id}" data-stat="fp">${p.name}</span>`;
+        return `<tr class="${on ? "cmp" : ""}"><td>${i + 1}</td><td>${name}<span class="posb ${p.pos}">${p.pos === "DST" ? "D/ST" : p.pos}</span>${p.status ? `<span class="st" style="color:var(--bad);font-size:11px;margin-left:6px">${p.status}</span>` : ""}</td>
+          <td class="opp"><span style="color:${col(p.team)}">${p.team}</span> ${p.home ? "vs" : "@"} ${p.opp}${wxIcon(gw[p.game])}</td>
+          <td class="proj">${p.mean[fmt].toFixed(1)}</td>
+          <td><div class="rbar"><i style="left:${X(q[2])}%;width:${X(q[18]) - X(q[2])}%"></i><b style="left:${X(q[10])}%"></b></div></td>
+          <td>${q[2].toFixed(1)}</td><td>${q[18].toFixed(1)}</td>
+          <td class="boom">${Math.round(boom * 100)}%</td><td class="bust">${Math.round(bust * 100)}%</td>
+          <td><input type="checkbox" data-cmp="${p.id}|${p.week}" ${on ? "checked" : ""}></td></tr>`;
+      }).join("");
+    renderCompare();
+  }
+  function renderCompare() {
+    const f = fant, fmt = ft.fmt;
+    const ps = ft.cmp.map((k) => { const [id, w] = k.split("|"); return f.players.find((p) => p.id === id && p.week === +w); }).filter(Boolean);
+    if (ps.length < 2) { $("ftCompare").innerHTML = ps.length ? `<div class="ftcmp"><h4>Start / sit <button data-clear>clear</button></h4><div class="dim">Tick one more player to compare.</div></div>` : ""; return; }
+    // chance each player scores the most (independent draws from each distribution)
+    const rand = NFLSim.mulberry32(7), wins = new Array(ps.length).fill(0), T = 20000;
+    for (let t = 0; t < T; t++) { let best = -1, bi = 0; ps.forEach((p, i) => { const v = sampleQ(p.q[fmt], rand()); if (v > best) { best = v; bi = i; } }); wins[bi]++; }
+    const top = wins.indexOf(Math.max(...wins));
+    const floorI = ps.reduce((bi, p, i) => (p.q[fmt][2] > ps[bi].q[fmt][2] ? i : bi), 0), ceilI = ps.reduce((bi, p, i) => (p.q[fmt][18] > ps[bi].q[fmt][18] ? i : bi), 0);
+    const maxV = Math.max(...ps.map((p) => p.q[fmt][19])) * 1.05, W = 900, rowH = 30, H = ps.length * rowH + 22;
+    const X = (v) => 130 + (v / maxV) * (W - 150);
+    let svg = "";
+    for (let v = 0; v <= maxV; v += 5) svg += `<line x1="${X(v)}" x2="${X(v)}" y1="0" y2="${H - 18}" stroke="#1d2a38"/><text x="${X(v)}" y="${H - 4}" fill="#7d8ea1" font-size="10" font-family="monospace" text-anchor="middle">${v}</text>`;
+    ps.forEach((p, i) => {
+      const q = p.q[fmt], y = i * rowH + 15, c = col(p.team);
+      svg += `<text x="0" y="${y + 4}" fill="#e8eef5" font-size="12" font-family="sans-serif">${p.name.length > 18 ? p.name.slice(0, 17) + "…" : p.name}</text>
+        <line x1="${X(q[1])}" x2="${X(q[19])}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="2" opacity=".6"/>
+        <rect x="${X(q[5])}" y="${y - 8}" width="${X(q[15]) - X(q[5])}" height="16" rx="4" fill="${c}" opacity=".55"/>
+        <rect x="${X(q[10]) - 1.5}" y="${y - 10}" width="3" height="20" fill="#fff"/>`;
+    });
+    $("ftCompare").innerHTML = `<div class="ftcmp"><h4>Start / sit · week ${ft.week} · ${fmt === "ppr" ? "PPR" : fmt === "half" ? "half PPR" : "standard"} <button data-clear>clear</button></h4>
+      <div class="ftc-grid">${ps.map((p, i) => `<div class="ftc ${i === top ? "win" : ""}"><div class="nm">${p.name} <span class="posb ${p.pos}">${p.pos}</span></div>
+        <div class="sb">${p.team} ${p.home ? "vs" : "@"} ${p.opp} · proj ${p.mean[fmt].toFixed(1)} · ${p.q[fmt][2].toFixed(1)}–${p.q[fmt][18].toFixed(1)}</div>
+        <div class="big">${((wins[i] / T) * 100).toFixed(0)}%</div><div class="sb">chance to score the most</div>
+        <div class="tags">${i === top ? '<span class="start">START</span>' : ""}${i === floorI ? "<span>SAFEST FLOOR</span>" : ""}${i === ceilI ? "<span>MOST UPSIDE</span>" : ""}</div></div>`).join("")}</div>
+      <div class="ftc-box"><svg viewBox="0 0 ${W} ${H}">${svg}</svg></div>
+      <div class="gd-note">Boxes cover the middle 50% of outcomes, whiskers 5th–95th percentile, white mark = median. Players in the same game are treated as independent.</div></div>`;
   }
 
   // ---------------- game day: live win probability + 4th-down helper ----------------
@@ -1006,9 +1107,9 @@
   // ---------------- player panel ----------------
   let plogs = null, plogsLoading = null;
   const pd = { pid: null, stat: null, line: null, range: "L10" };
-  const PSTAT = { py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
+  const PSTAT = { fp: "Fantasy pts", py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
     recy: "Rec yds", rec: "Receptions", tg: "Targets", rry: "Rush+Rec yds", td: "TDs" };
-  const statVal = (e, k) => (k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
+  const statVal = (e, k) => (k === "fp" ? Math.round(NFLSim.fantasyPoints(e, ft.fmt) * 10) / 10 : k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
   const projCache = {};
   function getLogs() {
     if (!plogsLoading) plogsLoading = fetch("data/players.json?" + (model ? model.generated : "")).then((r) => r.json()).then((d) => (plogs = d)).catch(() => (plogs = {}));
@@ -1057,7 +1158,7 @@
   function renderPlayer() {
     const pid = pd.pid, meta = playerMeta(pid), L = (plogs[pid] && plogs[pid].log) || [];
     const pos = meta.pos || (plogs[pid] || {}).pos || "";
-    const statsFor = pos === "QB" ? ["py", "pc", "ptd", "pint", "ry"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td"] : ["recy", "rec", "tg", "rry", "td"];
+    const statsFor = pos === "QB" ? ["py", "pc", "ptd", "pint", "ry", "fp"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td", "fp"] : ["recy", "rec", "tg", "rry", "td", "fp"];
     const avail = statsFor.filter((k) => L.some((e) => statVal(e, k) > 0));
     if (!pd.stat || !PSTAT[pd.stat]) pd.stat = avail[0] || statsFor[0];
     const k = pd.stat;
@@ -1071,7 +1172,13 @@
     const sorted = [...vals].sort((a, b) => a - b);
     const med = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : 0;
     const proj = projectionFor(pid, meta.team);
-    const mp = proj && proj.res.players[pid] && proj.res.players[pid].d[k] ? proj.res.players[pid].d[k] : null;
+    let mp = proj && proj.res.players[pid] && proj.res.players[pid].d[k] ? proj.res.players[pid].d[k] : null;
+    if (k === "fp" && proj && proj.res.players[pid]) {   // fantasy points per simulated game
+      const r = proj.res.players[pid].r, n = r.py.length, arr = new Float64Array(n);
+      for (let i = 0; i < n; i++) arr[i] = Math.round(NFLSim.fantasyPoints({ py: r.py[i], ptd: r.ptd[i], pint: r.pint[i], ry: r.ry[i], rtd: r.td[i] - 0, rec: r.rec[i], recy: r.recy[i] }, ft.fmt) * 10) / 10;
+      // r.td = rush+rec TDs; scoring is 6 either way, so put them all under rtd
+      mp = arr.sort();
+    }
     const mMed = mp ? mp[Math.floor(mp.length / 2)] : null;
     if (pd.line == null || isNaN(pd.line)) pd.line = k === "td" ? 0.5 : Math.floor(mMed != null ? mMed : med) + 0.5;
     const line = pd.line;

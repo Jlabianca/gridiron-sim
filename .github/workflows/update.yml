@@ -51,6 +51,8 @@ jobs:
         run: |
           node scripts/edges.js site/data/model.json site/data/odds.json site/data/edges.json 10000 | tee edges.log
           grep "^edges:" edges.log | sed 's/^/::notice title=Edges::/' || true
+      - name: Fantasy projections
+        run: node scripts/fantasy.js site/data/model.json site/data/fantasy.json 2500 | tee fantasy.log
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -125,7 +125,7 @@
       let s = box[p.id];
       if (!s) s = box[p.id] = { id: p.id, name: p.name, short: p.short, pos: p.pos || "", team: teams[team].abbr,
         pa: 0, pc: 0, py: 0, ptd: 0, pint: 0, sk: 0, ra: 0, ry: 0, rtd: 0, tg: 0, rec: 0, recy: 0, rectd: 0,
-        fga: 0, fgm: 0, xpa: 0, xpm: 0, pts: 0 };
+        fga: 0, fgm: 0, fg40: 0, fg50: 0, xpa: 0, xpm: 0, pts: 0, fl: 0 };
       return s;
     }
 
@@ -292,6 +292,7 @@
       runClock(5, false);
       if (made) {
         ks.fgm++; ks.pts += 3; addPts(side, 3);
+        if (dist >= 50) ks.fg50++; else if (dist >= 40) ks.fg40++;
         record({ type: "field_goal", pos: side, yl, ylEnd: 0, yards: 0, player: k.short, made: true, scoring: "FG",
           desc: k.short + " " + dist + "-yard field goal is GOOD." });
         endDrive("Field goal");
@@ -409,7 +410,7 @@
           const s = stat(side, qb); s.sk++;
           desc = qb.short + " sacked for " + (-yards) + (yards === -1 ? " yard." : " yards.");
           player = qb.short;
-          if (rand() < 0.08) turnover = "Fumble";
+          if (rand() < 0.08) { turnover = "Fumble"; s.fl++; }
         } else if (r < m.sack + m.scramble) {
           type = "scramble"; yards = sample(rand, L.scramble_yards);
           if (yards > 0) yards = Math.round(yards * m.rushYdsF);
@@ -443,7 +444,7 @@
             player = tgt ? tgt.short : "";
             pstat = { s: qs, kind: "pass", r: rs };
             desc = qb.short + " pass to " + (tgt ? tgt.short : "receiver") + " for " + yards + (Math.abs(yards) === 1 ? " yard." : " yards.");
-            if (rand() < L.fumble_rate_rec) turnover = "Fumble";
+            if (rand() < L.fumble_rate_rec) { turnover = "Fumble"; if (rs) rs.fl++; }
           } else {
             incomplete = true; yards = 0;
             player = tgt ? tgt.short : qb.short;
@@ -465,7 +466,7 @@
         player = rb.short;
         const dir = ["up the middle", "left tackle", "right guard", "right end", "left end", "left guard", "right tackle"][Math.floor(rand() * 7)];
         desc = rb.short + " " + dir + " for " + yards + (Math.abs(yards) === 1 ? " yard." : " yards.");
-        if (rand() < fumRush) turnover = "Fumble";
+        if (rand() < fumRush) { turnover = "Fumble"; s.fl++; }
       }
 
       // cap at goal line / own end zone
@@ -582,7 +583,7 @@
   function simulateMany(model, opts, n, onProgress) {
     const agg = { n: 0, away: [], home: [], players: {}, wins: { away: 0, home: 0, tie: 0 }, first: { n: 0, converted: 0, made: 0, scored: 0 } };
     const base = opts.seed == null ? (Math.random() * 2 ** 31) >>> 0 : opts.seed;
-    const keys = ["pa", "pc", "py", "ptd", "pint", "ra", "ry", "rtd", "tg", "rec", "recy", "rectd", "fgm", "xpm", "pts"];
+    const keys = ["pa", "pc", "py", "ptd", "pint", "sk", "ra", "ry", "rtd", "tg", "rec", "recy", "rectd", "fl", "fgm", "fg40", "fg50", "xpm", "pts"];
     for (let i = 0; i < n; i++) {
       const g = simulateGame(model, Object.assign({}, opts, { seed: base + i * 7919, log: false }));
       agg.n++;
@@ -604,6 +605,22 @@
       if (onProgress && i % 250 === 0) onProgress(i / n);
     }
     return agg;
+  }
+
+  // fantasy scoring. fmt: "ppr" | "half" | "std". s = stat line (sim box or game log)
+  const REC_PTS = { ppr: 1, half: 0.5, std: 0 };
+  function fantasyPoints(s, fmt) {
+    const g = (k) => s[k] || 0;
+    return 0.04 * g("py") + 4 * g("ptd") - 2 * g("pint") + 0.1 * g("ry") + 6 * g("rtd")
+      + REC_PTS[fmt] * g("rec") + 0.1 * g("recy") + 6 * g("rectd") - 2 * g("fl");
+  }
+  function kickerPoints(s) {
+    const fg = s.fgm || 0, f40 = s.fg40 || 0, f50 = s.fg50 || 0;
+    return 3 * (fg - f40 - f50) + 4 * f40 + 5 * f50 + (s.xpm || 0);
+  }
+  function dstPoints(d) { // d: {pa, sacks, ints, fumrec}
+    const pa = d.pa, tier = pa === 0 ? 10 : pa <= 6 ? 7 : pa <= 13 ? 4 : pa <= 20 ? 1 : pa <= 27 ? 0 : pa <= 34 ? -1 : -4;
+    return tier + d.sacks + 2 * d.ints + 2 * d.fumrec;
   }
 
   // win probability from a game state (light: no player stats kept)
@@ -634,7 +651,7 @@
     return { n: agg.n, away: agg.away, home: agg.home, wins: agg.wins, first: agg.first, players };
   }
 
-  const api = { simulateGame, simulateMany, summarize, winProb, mulberry32, defaultOut };
+  const api = { simulateGame, simulateMany, summarize, winProb, fantasyPoints, kickerPoints, dstPoints, mulberry32, defaultOut };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NFLSim = api;
 })(typeof self !== "undefined" ? self : this);
