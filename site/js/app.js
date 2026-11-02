@@ -682,7 +682,7 @@
     const tier = (ev) => (ev >= 0.1 ? 3 : ev >= 0.05 ? 2 : ev >= 0 ? 1 : 0);
     const signed = (x, d = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toFixed(d);
     const priceTxt = (p) => (p > 0 ? "+" + p : "" + p);
-    const bar = (b) => `<div class="pbar"><i class="${b.p >= b.p_implied ? "" : "neg"}" style="width:${(b.p * 100).toFixed(1)}%"></i><b style="left:calc(${(b.p_implied * 100).toFixed(1)}% - 1px)"></b></div>`;
+    const bar = (b) => `<div class="pbar" title="Model ${(b.p * 100).toFixed(1)}% (bar) vs book ${(b.p_implied * 100).toFixed(1)}% (yellow marker)"><i class="${b.p >= b.p_implied ? "" : "neg"}" style="width:${(b.p * 100).toFixed(1)}%"></i><b style="left:${(b.p_implied * 100).toFixed(1)}%"></b></div>`;
     const tag = (b) => ({ ml: "ML", spread: "SPREAD", total: "TOTAL", prop: b.stat === "td" ? "TD" : "PROP" })[b.kind];
     const flags = (b) => (b.out_in_model ? `<span class="flag red" title="Ruled out or unused in the model">out in model</span>` : "") +
       (b.ev > 0.2 ? `<span class="flag" title="Gaps this big usually mean the model is missing news">check news</span>` : "");
@@ -695,12 +695,12 @@
         <span class="rank">#${i + 1}</span><div class="tc-game">${g.away} @ ${g.home} · ${fmtT(b.commence)}</div>
         <div class="tc-bet">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
         <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span><span class="tc-ev">${signed(b.ev)}%</span></div>
-        ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span>Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
+        ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span style="color:#f2c94c">▼ Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
     }).join("");
 
     // grouped by game
     const games = e.games.filter((g) => !focus || g.game === focus).sort((a, b) => (a.commence < b.commence ? -1 : 1));
-    const hdr = `<div class="erow hdr"><span>Bet</span><span>Best price</span><span>Model vs book</span><span style="text-align:right">Edge</span><span style="text-align:right">EV</span><span style="text-align:right">Median</span></div>`;
+    const hdr = `<div class="erow hdr"><span>Bet</span><span>Best price</span><span>Model vs book <span class="plegend"><span class="sw"></span>model <span class="tri">▼</span>book</span></span><span style="text-align:right">Edge</span><span style="text-align:right">EV</span><span style="text-align:right">Median</span></div>`;
     $("edGames").innerHTML = games.map((g) => {
       const rows = shown.filter((b) => b.game === g.game);
       if (!rows.length && !focus) return "";

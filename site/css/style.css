@@ -208,10 +208,14 @@ table.sc .up { color: var(--accent); font-size: 11px; }
 .price { font: 700 14px var(--mono); }
 .bookpill { font: 10px var(--mono); color: #c5d1de; background: #1b2735; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
 
-.pbar { position: relative; height: 8px; background: #1a2532; border-radius: 4px; margin-top: 8px; }
-.pbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--good); }
+.pbar { position: relative; height: 6px; background: repeating-linear-gradient(90deg, #1a2532 0 calc(10% - 1px), #24313f calc(10% - 1px) 10%); border-radius: 1px; margin-top: 14px; cursor: default; }
+.pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--good); opacity: .85; }
 .pbar i.neg { background: var(--bad); }
-.pbar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; border-radius: 1px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+.pbar b { position: absolute; top: -9px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #f2c94c; transform: translateX(-5px); }
+.pbar b::after { content: ""; position: absolute; left: -1px; top: 0; width: 2px; height: 15px; background: #f2c94c; }
+.plegend { font: 10px var(--mono); color: var(--dim); text-transform: none; letter-spacing: 0; }
+.plegend .sw { display: inline-block; width: 10px; height: 6px; background: var(--good); margin: 0 3px 0 0; vertical-align: 1px; }
+.plegend .tri { color: #f2c94c; margin: 0 2px 0 8px; }
 
 .edgame { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
 .edgame.focus { border-color: var(--accent); }
@@ -230,7 +234,7 @@ table.sc .up { color: var(--accent); font-size: 11px; }
 .ebet .tag { display: inline-block; font: 700 9px var(--mono); letter-spacing: .08em; color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-right: 7px; vertical-align: 2px; }
 .ebet .flag { font: 10px var(--mono); color: var(--accent); border: 1px solid #5a4a1a; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
 .ebet .flag.red { color: var(--bad); border-color: #5a2323; }
-.eprob .pbar { margin-top: 0; }
+.eprob .pbar { margin-top: 8px; }
 .eprob .lbl { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--dim); margin-top: 4px; }
 .eedge { font: 600 13px var(--mono); text-align: right; }
 .evb { justify-self: end; font: 700 12px var(--mono); border-radius: 6px; padding: 4px 8px; min-width: 72px; text-align: center; }
