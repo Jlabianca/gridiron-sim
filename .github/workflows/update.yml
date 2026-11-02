@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -37,6 +37,8 @@ jobs:
           grep "^weather:" build.log | sed 's/^/::notice title=Forecasts::/'
       - name: Calibrate clock and scoring
         run: node scripts/calibrate.js site/data/model.json
+      - name: Restore scorecard history and odds from the live site
+        run: python scripts/restore_data.py "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
       - name: Update scorecard (save pre-game projections, grade finals)
         run: node scripts/scorecard.js site/data/model.json site/data/history.json
       - name: Fetch sportsbook lines (The Odds API)
@@ -49,21 +51,6 @@ jobs:
         run: |
           node scripts/edges.js site/data/model.json site/data/odds.json site/data/edges.json 10000 | tee edges.log
           grep "^edges:" edges.log | sed 's/^/::notice title=Edges::/' || true
-      - name: Save history and odds to the repo
-        continue-on-error: true   # never block the deploy over this
-        run: |
-          git config user.name "gridiron-sim bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data/history.json
-          [ -f site/data/odds.json ] && git add site/data/odds.json
-          if git diff --cached --quiet; then echo "nothing to save"; exit 0; fi
-          git commit -m "Data update $(date -u +%Y-%m-%d)"
-          for i in 1 2 3; do
-            git fetch --depth=20 origin main && git rebase -X ours origin/main && git push origin HEAD:main && exit 0
-            git rebase --abort 2>/dev/null; sleep 5
-          done
-          echo "::warning title=Save::could not push history/odds (check Settings → Actions → General → Workflow permissions = Read and write)"
-          exit 1
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
