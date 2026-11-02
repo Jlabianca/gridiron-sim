@@ -15,7 +15,8 @@
   let projResult = null, projStale = true, worker = null;
   const lines = {}; // user-entered prop lines: key `${id}|${stat}`
   let qbSel = { away: "", home: "" };
-  let legs = [], bookOdds = ""; // "" = automatic (most recent starter who isn't ruled out)
+  let legs = [], bookOdds = "";
+  let wpWorker = null, wpJob = 0, wpData = null; // win-probability series for the replay // "" = automatic (most recent starter who isn't ruled out)
 
   // ---------------- boot ----------------
   fetch("data/model.json").then((r) => r.json()).then((m) => {
@@ -171,6 +172,7 @@
       if (t.dataset.tab === "proj" && projStale) runProjections();
       if (t.dataset.tab === "score") loadScorecard();
       if (t.dataset.tab === "edges") loadEdges();
+      if (t.dataset.tab === "live") renderGameDay();
     }));
   }
 
@@ -179,6 +181,12 @@
     $("btnPlay").onclick = () => (playing ? pause() : play());
     $("btnStep").onclick = () => { pause(); step(); };
     $("btnEnd").onclick = () => { pause(); idx = game.plays.length - 1; show(idx, false); showFinal(); };
+    $("wpChart").onclick = (e) => {   // jump the replay to the clicked moment
+      if (!wpData || !wpData.vals.length) return;
+      const r = $("wpChart").getBoundingClientRect(), t = ((e.clientX - r.left) / r.width) * wpData.endT;
+      let best = 0; game.plays.forEach((p, i) => { if (p.secs != null && elapsedOf(p.q, p.secs) <= t) best = i; });
+      pause(); idx = best; show(idx, false);
+    };
     $("btnNew").onclick = () => newGame(randSeed());
     $("speedSel").onchange = () => (speed = +$("speedSel").value);
     $("btnShare").onclick = () => {
@@ -218,7 +226,179 @@
     drawFieldBase();
     renderStrip();
     resetBoard();
+    startWP();
     $("btnPlay").textContent = "▶ Play";
+  }
+
+  // ---------------- game day: live win probability + 4th-down helper ----------------
+  let gd = null, gdTeams = null;
+  function gdDefault() {
+    return { away: 0, home: 0, q: 1, clock: "15:00", pos: "home", side: "own", yd: 35, down: 1, togo: 10, toA: 3, toH: 3 };
+  }
+  function gdFromReplay() {
+    if (!game) return null;
+    let i = idx >= 0 ? idx : 0;
+    while (i < game.plays.length && !game.plays[i].down) i++;
+    const p = game.plays[i]; if (!p) return null;
+    return { away: p.score[0], home: p.score[1], q: p.q, clock: p.clock, pos: p.pos, side: p.yl > 50 ? "own" : "opp",
+      yd: p.yl > 50 ? 100 - p.yl : p.yl, down: p.down, togo: p.togo, toA: p.to ? p.to.away : 3, toH: p.to ? p.to.home : 3 };
+  }
+  function gdState() {
+    const [m, sx] = String(gd.clock).split(":").map((x) => parseInt(x, 10) || 0);
+    const secs = Math.max(0, Math.min(gd.q >= 5 ? 600 : 900, m * 60 + sx));
+    const yl = Math.max(1, Math.min(99, gd.side === "own" ? 100 - gd.yd : gd.yd));
+    return { q: gd.q, secs, away: +gd.away, home: +gd.home, pos: gd.pos, yl, down: +gd.down, togo: Math.max(1, Math.min(+gd.togo, yl)), to: { away: +gd.toA, home: +gd.toH } };
+  }
+  function renderGameDay() {
+    const key = cur.away + "@" + cur.home;
+    if (!gd || gdTeams !== key) { gd = gdDefault(); gdTeams = key; }
+    const A = cur.away, H = cur.home;
+    const seg = (name, opts, val) => `<div class="seg" data-gd="${name}">${opts.map(([v, t]) => `<button data-v="${v}" class="${String(v) === String(val) ? "on" : ""}">${t}</button>`).join("")}</div>`;
+    $("gdForm").innerHTML = `
+      <div><h4>Score</h4><div class="gd-score">
+        <div><b style="color:${col(A)}">${A}</b><input data-gdi="away" type="number" min="0" value="${gd.away}"></div>
+        <div><b style="color:${col(H)}">${H}</b><input data-gdi="home" type="number" min="0" value="${gd.home}"></div></div></div>
+      <div><h4>Clock</h4><div class="gd-row">${seg("q", [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [5, "OT"]], gd.q)}<input data-gdi="clock" type="text" value="${gd.clock}" title="mm:ss left in the quarter"></div></div>
+      <div><h4>Ball</h4>
+        <div class="gd-row"><label>Possession</label>${seg("pos", [["away", A], ["home", H]], gd.pos)}</div>
+        <div class="gd-row" style="margin-top:6px"><label>Ball on</label>${seg("side", [["own", "own"], ["opp", "opp"]], gd.side)}<input data-gdi="yd" type="number" min="1" max="50" value="${gd.yd}"></div>
+        <div class="gd-row" style="margin-top:6px"><label>Down</label>${seg("down", [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"]], gd.down)}</div>
+        <div class="gd-row" style="margin-top:6px"><label>To go</label><input data-gdi="togo" type="number" min="1" max="99" value="${gd.togo}"></div></div>
+      <div><h4>Timeouts left</h4>
+        <div class="gd-row"><label style="color:${col(A)}">${A}</label>${seg("toA", [[0, "0"], [1, "1"], [2, "2"], [3, "3"]], gd.toA)}</div>
+        <div class="gd-row" style="margin-top:6px"><label style="color:${col(H)}">${H}</label>${seg("toH", [[0, "0"], [1, "1"], [2, "2"], [3, "3"]], gd.toH)}</div></div>
+      <div class="gd-btns"><button class="primary" id="gdRun">Simulate rest of game</button><button id="gdLoad" title="Use the situation from the current replay play">Load from replay</button><button id="gdReset">Kickoff</button></div>`;
+    $("gdForm").querySelectorAll("[data-gd] button").forEach((b) => (b.onclick = () => { gd[b.parentElement.dataset.gd] = b.dataset.v === "away" || b.dataset.v === "home" || b.dataset.v === "own" || b.dataset.v === "opp" ? b.dataset.v : +b.dataset.v; renderGameDay(); }));
+    $("gdForm").querySelectorAll("[data-gdi]").forEach((inp) => (inp.onchange = () => { gd[inp.dataset.gdi] = inp.type === "number" ? +inp.value : inp.value; drawGdField(); }));
+    $("gdRun").onclick = runGameDay;
+    $("gdLoad").onclick = () => { const r = gdFromReplay(); if (r) { gd = r; renderGameDay(); runGameDay(); } };
+    $("gdReset").onclick = () => { gd = gdDefault(); renderGameDay(); };
+    drawGdField();
+    if (!$("gdResult").innerHTML) $("gdResult").innerHTML = `<div class="gd-card dim">Set the situation and press <b>Simulate rest of game</b>.</div>`;
+    $("gd4th").innerHTML = "";
+  }
+  function drawGdField() {
+    const st = gdState(), X = (abs) => 40 + abs * 9.2;
+    const abs = st.pos === "away" ? 100 - st.yl : st.yl, dir = st.pos === "away" ? 1 : -1;
+    const fd = st.pos === "away" ? 100 - Math.max(0, st.yl - st.togo) : Math.max(0, st.yl - st.togo);
+    let h = `<rect x="0" y="0" width="1000" height="90" fill="#0d2414"/><rect x="0" y="0" width="40" height="90" fill="${col(cur.away)}" opacity=".45"/><rect x="960" y="0" width="40" height="90" fill="${col(cur.home)}" opacity=".45"/>`;
+    for (let y = 10; y < 100; y += 10) h += `<line x1="${X(y)}" x2="${X(y)}" y1="0" y2="90" stroke="#fff" stroke-opacity=".15"/><text x="${X(y)}" y="84" fill="#fff" opacity=".35" font-size="11" font-family="monospace" text-anchor="middle">${y <= 50 ? y : 100 - y}</text>`;
+    h += `<line x1="${X(abs)}" x2="${X(abs)}" y1="0" y2="90" stroke="#4aa3ff" stroke-width="3"/>`;
+    if (st.yl > st.togo) h += `<line x1="${X(fd)}" x2="${X(fd)}" y1="0" y2="90" stroke="#f2c94c" stroke-width="3"/>`;
+    h += `<ellipse cx="${X(abs)}" cy="42" rx="9" ry="6" fill="#f4efe6" stroke="#8a5a2b" stroke-width="2"/>`;
+    h += `<text x="${X(abs) + dir * 26}" y="30" fill="${col(cur[st.pos])}" font-size="18" font-weight="700" font-family="monospace" text-anchor="middle">${dir > 0 ? "›››" : "‹‹‹"}</text>`;
+    const ord2 = ["", "1st", "2nd", "3rd", "4th"][st.down];
+    h += `<text x="500" y="18" fill="#e8eef5" font-size="13" font-family="monospace" text-anchor="middle">${cur[st.pos]} ball · ${ord2} & ${st.yl <= st.togo ? "goal" : st.togo} at ${st.yl === 50 ? "midfield" : (st.yl > 50 ? cur[st.pos] : cur[st.pos === "home" ? "away" : "home"]) + " " + (st.yl > 50 ? 100 - st.yl : st.yl)}</text>`;
+    $("gdField").innerHTML = `<svg viewBox="0 0 1000 90" preserveAspectRatio="none">${h}</svg>`;
+  }
+  function runGameDay() {
+    const st = gdState(), A = cur.away, H = cur.home;
+    $("gdResult").innerHTML = `<div class="gd-card dim">Simulating…</div>`; $("gd4th").innerHTML = "";
+    setTimeout(() => {
+      const base = Object.assign(simOpts(), { start: st, seed: 31337 });
+      const agg = NFLSim.simulateMany(model, base, 3000);
+      const n = agg.n, pH = (agg.wins.home + agg.wins.tie / 2) / n, pA = 1 - pH;
+      const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const sg = schedFor(A, H);
+      const margin = agg.home.map((h, i) => h - agg.away[i]), total = agg.home.map((h, i) => h + agg.away[i]);
+      const extra = [];
+      if (sg && sg.spread != null) { const sp = sg.spread, fav = sp >= 0 ? H : A; const c = sp >= 0 ? margin.filter((m) => m > sp).length / n : margin.filter((m) => -m > -sp).length / n; extra.push(`<div class="card"><div class="k">${fav} −${Math.abs(sp)} (pregame)</div><div class="v">${pct(c)}</div><div class="s">chance to cover</div></div>`); }
+      if (sg && sg.total != null) extra.push(`<div class="card"><div class="k">Over ${sg.total} (pregame)</div><div class="v">${pct(total.filter((t) => t > sg.total).length / n)}</div><div class="s">projected total ${mean(total).toFixed(1)}</div></div>`);
+      $("gdResult").innerHTML = `<div class="gd-card"><h4>Win probability</h4>
+        <div class="wpsplit"><div style="flex-basis:${(pA * 100).toFixed(1)}%;background:${col(A)}">${pA >= 0.12 ? A + " " + (pA * 100).toFixed(1) + "%" : ""}</div><div style="flex-basis:${(pH * 100).toFixed(1)}%;background:${col(H)}">${pH >= 0.12 ? H + " " + (pH * 100).toFixed(1) + "%" : ""}</div></div>
+        <div class="cards" style="margin-top:10px">
+          <div class="card"><div class="k">Projected final</div><div class="v">${mean(agg.away).toFixed(1)}–${mean(agg.home).toFixed(1)}</div><div class="s">${A}–${H} (average)</div></div>
+          <div class="card"><div class="k">Fair live moneyline</div><div class="v">${american(pA)} / ${american(pH)}</div><div class="s">${A} / ${H}</div></div>
+          ${extra.join("")}</div>
+        <div class="gd-note">${n.toLocaleString()} simulations from this snap · uses this game's injuries, QB picks and weather settings.</div></div>`;
+      if (st.down === 4) run4th(st, base);
+      else $("gd4th").innerHTML = `<div class="gd-card dim">Set the down to <b>4th</b> to compare going for it, kicking and punting.</div>`;
+    }, 30);
+  }
+  function run4th(st, base) {
+    const side = st.pos, team = cur[side], fgDist = st.yl + 17, N = 4000;
+    const opts = [["go", "Go for it"], ["fg", `Field goal (${fgDist} yd)`], ["punt", "Punt"]].filter(([d]) => !(d === "fg" && fgDist > 66) && !(d === "punt" && st.yl < 35));
+    const res = opts.map(([d, label]) => {
+      const a = NFLSim.simulateMany(model, Object.assign({}, base, { force4th: d, seed: 777 }), N);
+      const p = (side === "home" ? a.wins.home : a.wins.away) / a.n + a.wins.tie / a.n / 2;
+      const f = a.first;
+      const detail = d === "go" ? `converts ${pct(f.converted / f.n)}` : d === "fg" ? `makes it ${pct(f.made / f.n)}` : "opponent takes over deep";
+      return { d, label, p, detail };
+    });
+    const best = res.reduce((a, b) => (b.p > a.p ? b : a));
+    const second = res.filter((r) => r !== best).reduce((a, b) => (!a || b.p > a.p ? b : a), null);
+    const close = second && best.p - second.p < 0.02;   // inside the simulation noise
+    // what teams usually do in this spot (league tendencies)
+    const row = model.league.fourth[Math.max(0, Math.min(9, Math.floor((st.yl - 1) / 10)))][st.togo <= 1 ? 0 : st.togo <= 3 ? 1 : st.togo <= 6 ? 2 : 3];
+    $("gd4th").innerHTML = `<div class="gd-card"><h4>4th-down decision · ${team} win probability by choice</h4>
+      <div class="gd-opts">${res.map((r) => `<div class="gd-opt ${r === best ? "best" : ""}">${r === best ? `<span class="badge">${close ? "TOSS-UP" : "BEST CALL"}</span>` : close && r === second ? '<span class="badge" style="background:#7d8ea1">TOSS-UP</span>' : ""}
+        <div class="k">${r.label}</div><div class="v" style="color:${col(team)}">${(r.p * 100).toFixed(1)}%</div>
+        <div class="s">${r.detail}</div>
+        ${r === best ? "" : `<div class="d edge-lo">−${((best.p - r.p) * 100).toFixed(1)} pts vs best</div>`}</div>`).join("")}</div>
+      ${close ? `<div class="gd-note" style="color:var(--accent)">The top two options are within 2 points, which is inside the simulation's margin of error, so call it a toss-up.</div>` : ""}
+      <div class="gd-note">What NFL teams usually do here: go for it ${Math.round(row[0] * 100)}% · punt ${Math.round(row[1] * 100)}% · kick ${Math.round(row[2] * 100)}% (normal game situations). ${N.toLocaleString()} sims per option.</div></div>`;
+  }
+
+  // ---------------- replay win-probability chart ----------------
+  const elapsedOf = (q, secs) => (Math.min(q, 5) - 1) * 900 + (q >= 5 ? 600 - secs : 900 - secs);
+  function startWP() {
+    const id = ++wpJob, idx = [], states = [];
+    game.plays.forEach((p, i) => {
+      if (!p.down || p.secs == null) return;
+      idx.push(i);
+      states.push({ q: p.q, secs: p.secs, away: p.score[0], home: p.score[1], pos: p.pos, yl: p.yl, down: p.down, togo: p.togo, to: p.to, recv2: game.recv2 });
+    });
+    const endT = Math.max(3600, elapsedOf(game.plays[game.plays.length - 1].q, 0));
+    wpData = { id, idx, states, vals: [], endT, final: game.score.home > game.score.away ? 1 : game.score.home < game.score.away ? 0 : 0.5 };
+    $("wpStatus").textContent = "calculating…"; $("wpNow").textContent = "";
+    renderWP(-1);
+    try {
+      if (!wpWorker) { wpWorker = new Worker("js/worker.js"); wpWorker.postMessage({ model }); wpWorker.onmessage = (e) => {
+        if (!wpData || e.data.wpId !== wpData.id) return;
+        wpData.vals = e.data.wp;
+        $("wpStatus").textContent = e.data.wp.length < e.data.total ? `calculating… ${Math.round((e.data.wp.length / e.data.total) * 100)}%` : "300 sims from each snap";
+        renderWP(idx >= 0 ? idx : -1);
+      }; }
+      const o = simOpts();
+      wpWorker.postMessage({ wp: { id, states, opts: o, n: 300 } });
+    } catch (err) { $("wpStatus").textContent = "needs a web server (see README)"; }
+  }
+  function renderWP(playIdx) {
+    if (!wpData) return;
+    if (playIdx != null) wpData.cur = playIdx;
+    const W = 1200, H = 150, padT = 8, padB = 16, d = wpData, n = d.vals.length;
+    const X = (t) => (t / d.endT) * W, Y = (p) => padT + (1 - p) * (H - padT - padB);
+    const pts = [];
+    for (let k = 0; k < n; k++) { const p = game.plays[d.idx[k]]; pts.push([X(elapsedOf(p.q, p.secs)), Y(d.vals[k]), d.vals[k], d.idx[k]]); }
+    if (n === d.states.length && n) pts.push([X(elapsedOf(game.plays[game.plays.length - 1].q, 0)), Y(d.final), d.final, game.plays.length - 1]);
+    let h = "";
+    for (let q = 1; q <= 4; q++) h += `<line x1="${X(q * 900)}" x2="${X(q * 900)}" y1="${padT}" y2="${H - padB}" stroke="#1d2a38"/><text x="${X(q * 900 - 450)}" y="${H - 3}" fill="#7d8ea1" font-size="10" font-family="monospace" text-anchor="middle">Q${q}</text>`;
+    h += `<line x1="0" x2="${W}" y1="${Y(0.5)}" y2="${Y(0.5)}" stroke="#33475c" stroke-dasharray="4 4"/>`;
+    h += `<text x="4" y="${padT + 10}" fill="${col(cur.home)}" font-size="11" font-family="monospace">${cur.home}</text><text x="4" y="${H - padB - 3}" fill="${col(cur.away)}" font-size="11" font-family="monospace">${cur.away}</text>`;
+    if (pts.length) {
+      const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+      const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${Y(0.5)} L${pts[0][0].toFixed(1)},${Y(0.5)} Z`;
+      h += `<defs><clipPath id="wpTop"><rect x="0" y="0" width="${W}" height="${Y(0.5)}"/></clipPath><clipPath id="wpBot"><rect x="0" y="${Y(0.5)}" width="${W}" height="${H}"/></clipPath></defs>`;
+      h += `<path d="${area}" fill="${col(cur.home)}" opacity=".25" clip-path="url(#wpTop)"/><path d="${area}" fill="${col(cur.away)}" opacity=".25" clip-path="url(#wpBot)"/>`;
+      h += `<path d="${line}" fill="none" stroke="#e8eef5" stroke-width="2"/>`;
+      for (const p of pts) { const pl = game.plays[p[3]]; if (pl && pl.scoring && pl.scoring !== "Safety") h += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${col(pl.pos === "home" ? cur.home : cur.away)}" stroke="#0b0f14"/>`; }
+    }
+    // current play marker
+    const ci = d.cur;
+    if (ci != null && ci >= 0 && game.plays[ci]) {
+      const pl = game.plays[ci], x = X(elapsedOf(pl.q, pl.secs));
+      h += `<line x1="${x}" x2="${x}" y1="${padT}" y2="${H - padB}" stroke="#f2c94c" stroke-width="1.5"/>`;
+      let k = -1; for (let j = 0; j < pts.length; j++) if (pts[j][3] <= ci) k = j;
+      if (k >= 0) {
+        const p = pts[k][2], fav = p >= 0.5 ? cur.home : cur.away;
+        h += `<circle cx="${pts[k][0]}" cy="${pts[k][1]}" r="5" fill="#f2c94c" stroke="#0b0f14"/>`;
+        $("wpNow").innerHTML = `<span style="color:${col(fav)}">${fav}</span> ${(Math.max(p, 1 - p) * 100).toFixed(0)}%`;
+      }
+    } else if (pts.length) {
+      const p = pts[0][2], fav = p >= 0.5 ? cur.home : cur.away;
+      $("wpNow").innerHTML = `<span style="color:${col(fav)}">${fav}</span> ${(Math.max(p, 1 - p) * 100).toFixed(0)}% at kickoff`;
+    }
+    $("wpChart").innerHTML = h;
   }
 
   function resetBoard() {
@@ -305,6 +485,7 @@
     }
     renderLine(i, p.drive);
     drawPlay(p, animate);
+    renderWP(i);
   }
 
   function renderLine(i, driveNo) {

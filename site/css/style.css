@@ -281,3 +281,40 @@ table.sc .up { color: var(--accent); font-size: 11px; }
 .pd td.hi { color: var(--good); font-weight: 700; } .pd td.lo { color: var(--bad); }
 .pd .sec { margin-top: 16px; }
 @media (max-width: 600px) { .pd-cards { grid-template-columns: repeat(2, 1fr); } }
+
+/* win probability chart */
+.wpbox { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 6px; }
+.wphead { display: flex; gap: 14px; align-items: baseline; font: 600 11px var(--mono); letter-spacing: .1em; color: var(--dim); }
+#wpNow { color: var(--text); letter-spacing: 0; font-size: 13px; }
+#wpStatus { margin-left: auto; letter-spacing: 0; font-weight: 400; }
+#wpChart { width: 100%; height: 150px; display: block; margin-top: 4px; }
+
+/* game day */
+.gd { display: grid; grid-template-columns: 360px 1fr; gap: 16px; margin-top: 14px; align-items: start; }
+.gd-form { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+.gd-form h4, .gd-out h4 { margin: 0 0 6px; font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.gd-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.gd-row label { font: 12px var(--mono); color: var(--dim); min-width: 74px; }
+.gd-score { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gd-score div { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; }
+.gd-score b { font: 700 16px var(--mono); }
+.gd-score input { width: 64px; font: 700 20px var(--mono); text-align: right; background: transparent; border: 0; padding: 0; }
+.gd-form input[type=text], .gd-form input[type=number] { width: 72px; }
+.gd-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.gd-out { display: grid; gap: 12px; }
+.gd-field { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.gd-field svg { width: 100%; height: 90px; display: block; }
+.wpsplit { display: flex; height: 40px; border-radius: 8px; overflow: hidden; font: 700 15px var(--mono); }
+.wpsplit div { display: flex; align-items: center; padding: 0 12px; color: #0b0f14; white-space: nowrap; transition: flex-basis .3s; }
+.wpsplit div:last-child { justify-content: flex-end; }
+.gd-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.gd-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.gd-opt { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; position: relative; }
+.gd-opt.best { border-color: var(--good); background: linear-gradient(160deg, #123222, var(--panel2) 70%); }
+.gd-opt .badge { white-space: nowrap; position: absolute; top: 10px; right: 10px; font: 700 10px var(--mono); letter-spacing: .1em; color: #0b0f14; background: var(--good); border-radius: 4px; padding: 2px 6px; }
+.gd-opt .k { font: 600 12px var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+.gd-opt .v { font: 700 28px var(--mono); margin: 4px 0; }
+.gd-opt .s { font: 12px var(--mono); color: var(--dim); }
+.gd-opt .d { font: 12px var(--mono); margin-top: 6px; }
+.gd-note { font: 12px var(--mono); color: var(--dim); margin-top: 8px; }
+@media (max-width: 900px) { .gd { grid-template-columns: 1fr; } .gd-opts { grid-template-columns: 1fr; } }

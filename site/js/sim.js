@@ -133,7 +133,9 @@
     let qtr = 1, secs = 900;
     let pos, yl, down, togo;
     const timeouts = { away: 3, home: 3 };
-    const openingReceiver = rand() < 0.5 ? "away" : "home";
+    let openingReceiver = rand() < 0.5 ? "away" : "home";
+    let force4th = opts.force4th || null;   // "go" | "fg" | "punt": decision for the first play if it's 4th down
+    let firstOutcome = null;
     let drive = null;
     let gameOver = false;
     let ot = null; // {poss:{away,home}}
@@ -149,7 +151,8 @@
 
     function record(entry) {
       if (!log) return;
-      entry.q = qtr; entry.clock = clockStr(); entry.score = [score.away, score.home];
+      entry.q = qtr; entry.clock = clockStr(); entry.secs = secs; entry.score = [score.away, score.home];
+      entry.to = { away: timeouts.away, home: timeouts.home };
       entry.drive = drives.length;
       plays.push(entry);
     }
@@ -368,7 +371,8 @@
         return;
       }
       if (down === 4) {
-        const dec = fourthDecision();
+        const dec = force4th || fourthDecision();
+        force4th = null;
         if (dec === "punt") { punt(); return; }
         if (dec === "fg") { attemptFG(); return; }
       }
@@ -536,11 +540,32 @@
     }
 
     // ---------- run the game ----------
-    kickoff(other(openingReceiver), "Opening kickoff");
-    let guard = 0;
+    const st = opts.start;
+    if (st) {
+      // pick up mid-game: {q, secs, away, home (scores), pos, yl, down, togo, to: {away, home}, recv2}
+      qtr = st.q || 1; secs = st.secs == null ? 900 : st.secs;
+      score.away = st.away || 0; score.home = st.home || 0;
+      if (st.to) { timeouts.away = st.to.away; timeouts.home = st.to.home; }
+      if (st.recv2) openingReceiver = other(st.recv2);
+      if (qtr >= 5) ot = { poss: { away: 1, home: 1 } };
+      startDrive(st.pos, clamp(st.yl, 1, 99), "Current situation");
+      down = clamp(st.down || 1, 1, 4); togo = clamp(st.togo || 10, 1, yl);
+    } else {
+      kickoff(other(openingReceiver), "Opening kickoff");
+    }
+    let guard = 0, first = true;
     while (!gameOver && guard++ < 600) {
       if (secs <= 0) { quarterCheck(); continue; }
-      scrimmage();
+      if (first && st && down === 4) {
+        const side = pos, before = score[side], d0 = drives.length;
+        const dec = opts.force4th || null;
+        scrimmage();
+        const after = score[side] - before;
+        firstOutcome = { decision: dec, scored: after,
+          converted: after >= 6 || (pos === side && drives.length === d0 && down === 1),
+          made: dec === "fg" ? after === 3 : undefined, oppStart: pos !== side ? yl : null };
+      } else scrimmage();
+      first = false;
     }
     if (drive && !drive.result) endDrive("End of game");
 
@@ -549,13 +574,13 @@
       away: opts.away, home: opts.home, score, qscore, winner, ot: !!ot,
       box, tstats, drives, plays,
       qb: { away: teams.away.qb.id, home: teams.home.qb.id },
-      weather: opts.weather || null,
+      weather: opts.weather || null, firstOutcome, recv2: other(openingReceiver),
     };
   }
 
   // ---------- many games ----------
   function simulateMany(model, opts, n, onProgress) {
-    const agg = { n: 0, away: [], home: [], players: {}, wins: { away: 0, home: 0, tie: 0 } };
+    const agg = { n: 0, away: [], home: [], players: {}, wins: { away: 0, home: 0, tie: 0 }, first: { n: 0, converted: 0, made: 0, scored: 0 } };
     const base = opts.seed == null ? (Math.random() * 2 ** 31) >>> 0 : opts.seed;
     const keys = ["pa", "pc", "py", "ptd", "pint", "ra", "ry", "rtd", "tg", "rec", "recy", "rectd", "fgm", "xpm", "pts"];
     for (let i = 0; i < n; i++) {
@@ -563,6 +588,7 @@
       agg.n++;
       agg.away.push(g.score.away); agg.home.push(g.score.home);
       agg.wins[g.winner]++;
+      if (g.firstOutcome) { const f = agg.first; f.n++; if (g.firstOutcome.converted) f.converted++; if (g.firstOutcome.made) f.made++; f.scored += g.firstOutcome.scored; }
       const seen = new Set();
       for (const id in g.box) {
         const s = g.box[id];
@@ -580,6 +606,18 @@
     return agg;
   }
 
+  // win probability from a game state (light: no player stats kept)
+  function winProb(model, opts, n) {
+    const base = opts.seed == null ? (Math.random() * 2 ** 31) >>> 0 : opts.seed;
+    let h = 0, a = 0, m = 0, t = 0;
+    for (let i = 0; i < n; i++) {
+      const g = simulateGame(model, Object.assign({}, opts, { seed: base + i * 7919, log: false }));
+      if (g.winner === "home") h++; else if (g.winner === "away") a++; else { h += 0.5; a += 0.5; }
+      m += g.score.home - g.score.away; t += g.score.home + g.score.away;
+    }
+    return { home: h / n, away: a / n, margin: m / n, total: t / n };
+  }
+
   // compact per-player results: d = sorted (for quantiles/over %), r = per-sim in sim order (for parlays)
   const SUM_KEYS = ["py", "pc", "ptd", "pint", "ra", "ry", "rec", "recy", "pts"];
   function summarize(agg) {
@@ -593,10 +631,10 @@
       for (const k in out.r) out.d[k] = Int16Array.from(out.r[k]).sort();
       players[id] = out;
     }
-    return { n: agg.n, away: agg.away, home: agg.home, wins: agg.wins, players };
+    return { n: agg.n, away: agg.away, home: agg.home, wins: agg.wins, first: agg.first, players };
   }
 
-  const api = { simulateGame, simulateMany, summarize, mulberry32, defaultOut };
+  const api = { simulateGame, simulateMany, summarize, winProb, mulberry32, defaultOut };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NFLSim = api;
 })(typeof self !== "undefined" ? self : this);

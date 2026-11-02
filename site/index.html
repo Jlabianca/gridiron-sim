@@ -14,6 +14,7 @@
   </div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
+    <button class="tab" data-tab="live" role="tab">Game day</button>
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
     <button class="tab" data-tab="roster" role="tab">Injuries / usage</button>
     <button class="tab" data-tab="edges" role="tab">Edge board</button>
@@ -56,6 +57,8 @@
       <div><div class="ptype mono" id="pType"></div><div class="pdesc" id="pDesc">Press play to start.</div></div>
     </div>
     <div class="strip" id="driveStrip"></div>
+    <div class="wpbox"><div class="wphead"><span>WIN PROBABILITY</span><span id="wpNow" class="mono"></span><span id="wpStatus" class="dim mono"></span></div>
+      <svg id="wpChart" viewBox="0 0 1200 150" preserveAspectRatio="none"></svg></div>
 
     <div class="controls">
       <button id="btnPlay" class="primary">▶ Play</button>
@@ -69,6 +72,21 @@
 
     <div id="finalBox" class="final hidden"></div>
     <p class="note mono">SIMULATED GAME · NOT A REAL GAME · EVERY NUMBER IS MODELLED · PLAY-BY-PLAY DATA: NFLVERSE (CC BY 4.0)</p>
+  </section>
+
+  <!-- GAME DAY -->
+  <section id="tab-live" class="pane">
+    <div class="edhead">
+      <div><h2>Game day</h2><p class="dim" style="margin:0;max-width:760px">Set the game situation, or load it from the replay, and the model plays out the rest of the game thousands of times. On 4th down it also compares going for it, kicking and punting.</p></div>
+    </div>
+    <div class="gd">
+      <div class="gd-form" id="gdForm"></div>
+      <div class="gd-out">
+        <div id="gdField" class="gd-field"></div>
+        <div id="gdResult"></div>
+        <div id="gd4th"></div>
+      </div>
+    </div>
   </section>
 
   <!-- PROJECTIONS -->
