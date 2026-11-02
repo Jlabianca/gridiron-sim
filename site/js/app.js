@@ -43,8 +43,12 @@
       if ($("awaySel").value !== $("homeSel").value) selectGame({ away: $("awaySel").value, home: $("homeSel").value });
     };
     $("neutralChk").onchange = () => { newGame(seed); projStale = true; };
-    $("wxMode").onchange = () => { $("wxCustom").classList.toggle("hidden", $("wxMode").value !== "custom"); weatherChanged(); };
-    ["wxTemp", "wxWind", "wxPrecip"].forEach((id) => ($(id).onchange = weatherChanged));
+    document.addEventListener("change", (e) => {
+      const el = e.target.closest("[data-wx]");
+      if (!el) return;
+      wxState[el.dataset.wx] = el.type === "number" ? +el.value : el.value;
+      weatherChanged();
+    });
     renderGames();
   }
   function renderGames() {
@@ -80,28 +84,68 @@
     return { wind: Math.max(0, Math.min(30, (wind == null ? 8 : wind) - 10)), cold: Math.max(0, Math.min(45, 40 - (temp == null ? 60 : temp))),
       rain: precip === "rain" ? 1 : 0, snow: precip === "snow" ? 1 : 0 };
   }
+  const wxState = { mode: "auto", temp: 30, wind: 20, precip: "none" };
+  const impactCache = {};
   function currentWeather() {
-    const mode = $("wxMode").value;
-    if (mode === "none") return { features: null, label: "weather ignored" };
-    if (mode === "custom") {
-      const t = +$("wxTemp").value, w = +$("wxWind").value, p = $("wxPrecip").value;
-      return { features: wxFeatures(t, w, p), label: `custom · ${t}°F · wind ${w} mph${p !== "none" ? " · " + p : ""}` };
-    }
     const g = schedFor(cur.away, cur.home) || model.schedule.find((x) => x.away === cur.away && x.home === cur.home);
+    const stadium = (g && g.stadium) || "";
+    if (wxState.mode === "none") return { kind: "off", features: null, stadium };
+    if (wxState.mode === "custom") {
+      const w = { temp: wxState.temp, wind: wxState.wind, rain: wxState.precip === "rain" ? 1 : 0, snow: wxState.precip === "snow" ? 1 : 0 };
+      return { kind: "custom", w, features: wxFeatures(w.temp, w.wind, wxState.precip), stadium };
+    }
     const w = g && g.weather;
-    if (!w) return { features: null, label: "no forecast yet (neutral)" };
-    if (w.source === "indoor") return { features: null, label: w.roof === "dome" ? "dome" : "roof (treated as closed)" };
-    const parts = [`${w.temp}°F`, `wind ${w.wind} mph`];
-    if (w.precip_prob != null) parts.push(`${w.precip_prob}% precip`);
-    if (w.snow) parts.push("snow"); else if (w.rain >= 0.5) parts.push("rain");
-    return { features: w.features, label: `${w.source === "forecast" ? "forecast" : "actual"} · ${parts.join(" · ")}` };
+    if (!w) return { kind: "none", features: null, stadium };
+    if (w.source === "indoor") return { kind: "indoor", roof: w.roof, features: null, stadium };
+    return { kind: w.source, w, features: w.features, stadium };
+  }
+  function severity(f) {
+    if (!f) return "calm";
+    if (f.wind >= 10 || f.snow >= 0.4 || f.rain >= 0.5 || f.cold >= 20) return "severe";
+    if (f.wind >= 4 || f.cold >= 8 || f.rain >= 0.2 || f.snow > 0) return "mild";
+    return "calm";
   }
   function renderWeather() {
-    const w = currentWeather();
-    $("wxLabel").textContent = w.label;
-    const f = w.features, bad = f && (f.wind >= 5 || f.cold >= 10 || f.rain >= 0.5 || f.snow >= 0.5);
-    $("wxChip").textContent = bad ? "☁ " + w.label.replace(/^(forecast|actual|custom) · /, "") : "";
-    $("wxChip").classList.toggle("hidden", !bad);
+    const cw = currentWeather(), w = cw.w || {}, f = cw.features;
+    let sev, icon, big, badge, lines = [], src;
+    if (cw.kind === "indoor") {
+      sev = "indoor"; icon = "🏟️"; big = "Indoors"; badge = cw.roof === "dome" ? "Dome" : "Roof closed";
+      lines = ["No weather effect"]; src = cw.stadium;
+    } else if (cw.kind === "none") {
+      sev = "none"; icon = "🗓️"; big = "—"; badge = "No forecast yet";
+      lines = ["Forecasts appear about 2 weeks before kickoff"]; src = cw.stadium;
+    } else if (cw.kind === "off") {
+      sev = "none"; icon = "🚫"; big = "Off"; badge = "Weather ignored"; lines = ["Simulating neutral conditions"]; src = cw.stadium;
+    } else {
+      sev = severity(f);
+      icon = w.snow > 0 ? "❄️" : w.rain >= 0.3 ? "🌧️" : (w.wind || 0) >= 18 ? "💨" : (w.temp || 60) <= 32 ? "🥶" : (w.precip_prob || 0) >= 30 ? "🌥️" : "☀️";
+      big = (w.temp != null ? w.temp : "–") + "°";
+      badge = { severe: "Weather game", mild: "Some weather", calm: "Good conditions" }[sev];
+      lines.push(`💨 ${w.wind != null ? w.wind : "–"} mph${w.gusts ? ` · gusts ${w.gusts}` : ""}`);
+      if (w.snow > 0) lines.push(`❄️ ${w.precip_prob != null ? w.precip_prob + "% " : ""}snow`);
+      else if (w.precip_prob != null) lines.push(`💧 ${w.precip_prob}% rain`);
+      else if (w.rain) lines.push("💧 rain");
+      src = (cw.kind === "forecast" ? "Forecast for kickoff" : cw.kind === "observed" ? "Reported at kickoff" : "Custom conditions") + (cw.stadium ? " · " + cw.stadium : "");
+    }
+    const key = `${cur.away}|${cur.home}|${JSON.stringify(f)}|${[...outSet].sort().join(",")}|${qbSel.away}|${qbSel.home}`;
+    const imp = f ? impactCache[key] : 0;
+    const impHtml = f ? `<div class="wx-impact"><div class="k">Scoring impact</div><div class="v">${imp == null ? "…" : (imp > 0 ? "+" : imp < 0 ? "−" : "") + Math.abs(imp).toFixed(1)}</div><div class="s">pts on total</div></div>` : "<div></div>";
+    const edit = `<div class="wx-edit"><select data-wx="mode" title="Weather the simulation uses">
+        <option value="auto" ${wxState.mode === "auto" ? "selected" : ""}>Use forecast / actual</option>
+        <option value="none" ${wxState.mode === "none" ? "selected" : ""}>Ignore weather</option>
+        <option value="custom" ${wxState.mode === "custom" ? "selected" : ""}>Custom…</option></select>
+      ${wxState.mode === "custom" ? `<input data-wx="temp" type="number" value="${wxState.temp}">°F <input data-wx="wind" type="number" value="${wxState.wind}">mph
+        <select data-wx="precip">${["none", "rain", "snow"].map((v) => `<option value="${v}" ${wxState.precip === v ? "selected" : ""}>${v === "none" ? "dry" : v}</option>`).join("")}</select>` : ""}</div>`;
+    const html = `<div class="wxcard sev-${sev}"><div class="wx-icon">${icon}</div>
+      <div><div class="wx-top"><span class="wx-temp">${big}</span><span class="wx-badge">${badge}</span></div>
+      <div class="wx-lines">${lines.map((l) => `<span>${l}</span>`).join("")}</div><div class="wx-src">${src || ""}</div></div>${impHtml}${edit}</div>`;
+    document.querySelectorAll(".wxslot").forEach((el) => (el.innerHTML = html));
+    if (f && imp == null) setTimeout(() => {               // quick estimate: 800 sims with vs. without the weather
+      const base = Object.assign(simOpts(), { seed: 99 });
+      const tot = (o) => { const a = NFLSim.simulateMany(model, o, 800); let t = 0; for (let i = 0; i < a.n; i++) t += a.home[i] + a.away[i]; return t / a.n; };
+      impactCache[key] = tot(base) - tot(Object.assign({}, base, { weather: null }));
+      renderWeather();
+    }, 50);
   }
   function weatherChanged() { renderWeather(); projStale = true; newGame(seed); if ($("tab-proj").classList.contains("active")) runProjections(); }
   function simOpts() {
@@ -485,12 +529,12 @@
     };
     $("qbPick").innerHTML = qbBlock("away") + qbBlock("home");
     $("qbPick").querySelectorAll("select").forEach((sel) => (sel.onchange = () => {
-      qbSel[sel.dataset.side] = sel.value; projStale = true; renderRoster(); newGame(seed);
+      qbSel[sel.dataset.side] = sel.value; projStale = true; renderRoster(); renderWeather(); newGame(seed);
     }));
     $("rosters").querySelectorAll("input").forEach((c) => (c.onchange = () => {
       if (c.checked) outSet.delete(c.dataset.id); else outSet.add(c.dataset.id);
       projStale = true;
-      renderRoster();
+      renderRoster(); renderWeather();
       newGame(seed);
     }));
   }

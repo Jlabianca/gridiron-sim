@@ -37,7 +37,7 @@ main { padding: 18px 22px; max-width: 1280px; margin: 0 auto; }
 .pane.active { display: block; }
 
 /* scoreboard */
-.board { display: grid; grid-template-columns: minmax(220px, 300px) 120px 1fr; gap: 12px; align-items: stretch; }
+.board { display: grid; grid-template-columns: minmax(220px, 300px) 120px 1fr auto; gap: 12px; align-items: stretch; }
 .score { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; }
 .trow { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 12px; font: 600 26px var(--mono); padding: 2px 0; }
 .trow .bar { display: block; width: 4px; height: 30px; border-radius: 2px; }
@@ -47,7 +47,7 @@ main { padding: 18px 22px; max-width: 1280px; margin: 0 auto; }
 .clockbox { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: var(--mono); }
 #qtr { color: var(--dim); font-size: 12px; letter-spacing: .1em; }
 #clock { font-size: 28px; font-weight: 600; }
-.situation { display: flex; gap: 10px; align-items: flex-start; justify-content: flex-end; font: 600 12px var(--mono); letter-spacing: .06em; }
+.situation { display: flex; flex-direction: column; gap: 6px; align-items: stretch; justify-content: center; font: 600 12px var(--mono); letter-spacing: .06em; text-align: center; min-width: 120px; }
 .situation > span { background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 5px 9px; }
 #dd { color: var(--accent); }
 
@@ -124,8 +124,6 @@ footer { padding: 18px 22px 30px; font-size: 11px; border-top: 1px solid var(--l
 
 .wx { display: flex; gap: 8px; align-items: center; font-size: 12px; }
 .wx input { width: 58px; padding: 4px 6px; }
-#wxLabel { color: var(--dim); }
-#wxChip { color: #9fd3ff; }
 .qbpick { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
 .qbpick .team { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
 .qbpick h3 { margin: 0 0 8px; font: 600 13px var(--mono); }
@@ -133,4 +131,28 @@ footer { padding: 18px 22px 30px; font-size: 11px; border-top: 1px solid var(--l
 .qbpick .qbnote { font: 11px var(--mono); color: var(--dim); margin-top: 6px; }
 @media (max-width: 860px) { .qbpick { grid-template-columns: 1fr; } }
 .situation > span:empty { display: none; }
-.picker .wx { flex-basis: 100%; justify-content: flex-end; }
+
+/* weather card */
+.wxslot.wide { margin-bottom: 12px; }
+.wxcard { --sev: #2a3a4c; position: relative; display: grid; grid-template-columns: 64px 1fr auto; gap: 4px 14px; align-items: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--sev) 22%, var(--panel)) 0%, var(--panel) 70%);
+  border: 1px solid color-mix(in srgb, var(--sev) 60%, var(--line)); border-left: 4px solid var(--sev); border-radius: 8px; padding: 10px 14px; height: 100%; }
+.wxcard.sev-severe { --sev: #ef5b5b; } .wxcard.sev-mild { --sev: #f2c94c; } .wxcard.sev-calm { --sev: #3ecf8e; } .wxcard.sev-indoor { --sev: #6f8296; } .wxcard.sev-none { --sev: #3a4a5c; }
+.wx-icon { font-size: 42px; line-height: 1; text-align: center; filter: drop-shadow(0 2px 6px rgba(0,0,0,.4)); }
+.wx-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.wx-temp { font: 700 30px var(--mono); }
+.wx-badge { font: 700 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: #0b0f14; background: var(--sev); border-radius: 4px; padding: 3px 7px; }
+.wx-lines { display: flex; gap: 14px; flex-wrap: wrap; font: 13px var(--mono); color: #d6e2ee; margin-top: 2px; }
+.wx-src { font: 11px var(--mono); color: var(--dim); margin-top: 3px; }
+.wx-impact { text-align: right; padding-left: 12px; border-left: 1px solid var(--line); }
+.wx-impact .k { font: 10px var(--mono); letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+.wx-impact .v { font: 700 26px var(--mono); color: var(--sev); }
+.wx-impact .s { font: 11px var(--mono); color: var(--dim); }
+.wx-edit { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; margin-top: 4px; }
+.wx-edit select, .wx-edit input { padding: 3px 6px; font-size: 12px; }
+.wx-edit input { width: 56px; }
+@media (max-width: 860px) { .board { grid-template-columns: 1fr 100px; } .wxslot { grid-column: 1 / -1; } .situation { flex-direction: row; } }
+@media (max-width: 860px) {
+  .picker { flex-direction: column; align-items: stretch; }
+  .games button { flex: 1 1 46%; }
+}
