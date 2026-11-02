@@ -376,3 +376,26 @@ table.se tr.row { cursor: pointer; } table.se tr.row:hover td { background: #0f1
 .rest div { border-radius: 6px; padding: 5px 7px; font: 11px var(--mono); border: 1px solid var(--line); }
 .rest b { display: block; font-size: 15px; }
 @media (max-width: 900px) { .se-divs, .se-tgrid { grid-template-columns: 1fr; } }
+
+/* installed app / phones */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.top { padding-top: max(14px, env(safe-area-inset-top)); }
+@media (max-width: 860px) {
+  .top { position: sticky; top: 0; z-index: 30; background: rgba(7, 11, 16, .96); backdrop-filter: blur(6px); padding-bottom: 8px; }
+  .brand .sub { display: block; margin: 2px 0 0; }
+  .tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex: 0 0 auto; }
+  main { padding: 14px 12px; }
+  .picker { padding: 10px 12px; }
+  .games { max-height: 120px; overflow-y: auto; }
+  table.props, table.se, table.ft { display: block; overflow-x: auto; white-space: nowrap; }
+}
+@media (display-mode: standalone) { footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); } }
+
+.pd-cmpbar { display: flex; gap: 6px; margin-top: 10px; }
+.pd-cmpbar input { flex: 1; }
+.pd-cmpbar button { font: 12px var(--mono); padding: 4px 10px; }
+table.pd-h2h th, table.pd-h2h td { text-align: right; font-size: 13px; padding: 6px 8px; }
+table.pd-h2h th:first-child, table.pd-h2h td:first-child { text-align: left; color: var(--dim); }
+table.pd-h2h td.hi { color: var(--good); font-weight: 700; }

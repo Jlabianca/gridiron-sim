@@ -18,6 +18,17 @@
   let legs = [], bookOdds = "";
   let wpWorker = null, wpJob = 0, wpData = null; // win-probability series for the replay // "" = automatic (most recent starter who isn't ruled out)
 
+  // remembered settings (per browser)
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("gs." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("gs." + k, JSON.stringify(v)); } catch (e) {} },
+  };
+
+  // offline support / installable app (needs https or localhost)
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+
   // ---------------- boot ----------------
   fetch("data/model.json").then((r) => r.json()).then((m) => {
     model = m;
@@ -29,6 +40,12 @@
     booted = true;
     initEdgeControls();
     fetchEdges();
+    const sp = store.get("speed", null);
+    if (sp) { speed = +sp; $("speedSel").value = String(sp); }
+    const fmt = store.get("fmt", null);
+    if (fmt) { ft.fmt = fmt; $("ftFmt").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === fmt)); }
+    const tab = store.get("tab", "watch"), tb = document.querySelector(`.tab[data-tab="${tab}"]`);
+    if (tb && tab !== "watch") tb.click();
   }).catch((e) => { $("dataLine").textContent = "Could not load data/model.json — serve this folder over http (see README). " + e; });
 
   function defaultGame() {
@@ -167,6 +184,7 @@
   // ---------------- tabs ----------------
   function initTabs() {
     document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => {
+      store.set("tab", t.dataset.tab);
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
       document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "tab-" + t.dataset.tab));
       if (t.dataset.tab === "proj" && projStale) runProjections();
@@ -190,7 +208,7 @@
       pause(); idx = best; show(idx, false);
     };
     $("btnNew").onclick = () => newGame(randSeed());
-    $("speedSel").onchange = () => (speed = +$("speedSel").value);
+    $("speedSel").onchange = () => { speed = +$("speedSel").value; store.set("speed", speed); };
     $("btnShare").onclick = () => {
       const url = location.href.split("#")[0] + `#${cur.away}@${cur.home}/${seed}`;
       navigator.clipboard && navigator.clipboard.writeText(url);
@@ -346,7 +364,7 @@
         const segs = [["ftWeek", "week", true], ["ftFmt", "fmt"], ["ftPos", "pos"]];
         for (const [id, key, num] of segs) $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => {
           $(id).querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-          ft[key] = num ? +b.dataset.v : b.dataset.v; if (key === "week") ft.cmp = []; renderFantasy();
+          ft[key] = num ? +b.dataset.v : b.dataset.v; if (key === "week") ft.cmp = []; if (key === "fmt") store.set("fmt", ft.fmt); renderFantasy();
         }));
         $("ftSort").onchange = () => { ft.sort = $("ftSort").value; renderFantasy(); };
         $("ftTeam").onchange = () => { ft.team = $("ftTeam").value; renderFantasy(); };
@@ -1194,7 +1212,7 @@
 
   // ---------------- player panel ----------------
   let plogs = null, plogsLoading = null;
-  const pd = { pid: null, stat: null, line: null, range: "L10" };
+  const pd = { pid: null, stat: null, line: null, range: "L10", cmp: null, picking: false };
   const PSTAT = { fp: "Fantasy pts", py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
     recy: "Rec yds", rec: "Receptions", tg: "Targets", rry: "Rush+Rec yds", td: "TDs" };
   const statVal = (e, k) => (k === "fp" ? Math.round(NFLSim.fantasyPoints(e, ft.fmt) * 10) / 10 : k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
@@ -1212,11 +1230,11 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePlayer(); });
   function closePlayer() { $("pd").classList.add("hidden"); $("pdBack").classList.add("hidden"); }
   function openPlayer(pid, stat, line) {
-    pd.pid = pid; pd.stat = stat; pd.line = line; pd.range = "L10";
+    pd.pid = pid; pd.stat = stat; pd.line = line; pd.range = "L10"; pd.cmp = null; pd.picking = false;
     $("pd").innerHTML = `<div class="dim">Loading…</div>`;
     $("pd").classList.remove("hidden"); $("pdBack").classList.remove("hidden");
     $("pdBack").onclick = closePlayer;
-    getLogs().then(renderPlayer);
+    Promise.all([getLogs(), fetchFantasy()]).then(renderPlayer);
   }
   function playerMeta(pid) {
     for (const t in model.teams) { const p = model.teams[t].players.find((x) => x.id === pid); if (p) return Object.assign({ team: t }, p); }
@@ -1244,6 +1262,119 @@
   }
   const ord = (n) => n + (["th", "st", "nd", "rd"][((n % 100) - 20) % 10] || ["th", "st", "nd", "rd"][n % 100] || "th");
   function renderPlayer() {
+    if (pd.cmp) return renderPlayerCompare();
+    renderPlayerSingle();
+    addCompareButton();
+  }
+  // ---------- head-to-head comparison ----------
+  function addCompareButton() {
+    const host = $("pd").querySelector(".pd-sub"); if (!host) return;
+    const box = document.createElement("div");
+    box.className = "pd-cmpbar";
+    box.innerHTML = pd.picking
+      ? `<input id="pdCmpQ" list="pdCmpList" placeholder="Compare with… (type a name)" autocomplete="off"><datalist id="pdCmpList">${Object.entries(plogs).filter(([id]) => id !== pd.pid)
+          .sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, v]) => `<option value="${v.name} · ${v.team} ${v.pos}" data-id="${id}"></option>`).join("")}</datalist><button id="pdCmpCancel">cancel</button>`
+      : `<button id="pdCmpBtn" title="Compare this player with another">⇄ Compare</button>`;
+    host.after(box);
+    if (pd.picking) {
+      const q = $("pdCmpQ"); q.focus();
+      q.onchange = () => {
+        const opt = [...$("pdCmpList").options].find((o) => o.value === q.value);
+        if (opt) { pd.cmp = opt.dataset.id; pd.picking = false; renderPlayer(); }
+      };
+      $("pdCmpCancel").onclick = () => { pd.picking = false; renderPlayer(); };
+    } else $("pdCmpBtn").onclick = () => { pd.picking = true; renderPlayer(); };
+  }
+  function seriesFor(pid, k) {
+    const L = (plogs[pid] && plogs[pid].log) || [], season = model.season;
+    let games = L.slice();
+    if (pd.range === "L5") games = L.filter((e) => e.s === season).slice(-5);
+    else if (pd.range === "L10") games = L.slice(-10);
+    else if (pd.range === "season") games = L.filter((e) => e.s === season);
+    else if (pd.range === "last") games = L.filter((e) => e.s === season - 1);
+    return { games, vals: games.map((e) => statVal(e, k)) };
+  }
+  function modelDist(pid, team, k) {
+    const proj = projectionFor(pid, team); if (!proj || !proj.res.players[pid]) return { proj, mp: null };
+    if (k === "fp") {
+      const r = proj.res.players[pid].r, n = r.py.length, arr = new Float64Array(n);
+      for (let i = 0; i < n; i++) arr[i] = NFLSim.fantasyPoints({ py: r.py[i], ptd: r.ptd[i], pint: r.pint[i], ry: r.ry[i], rtd: r.td[i], rec: r.rec[i], recy: r.recy[i] }, ft.fmt);
+      return { proj, mp: arr.sort() };
+    }
+    return { proj, mp: proj.res.players[pid].d[k] || null };
+  }
+  function renderPlayerCompare() {
+    const ids = [pd.pid, pd.cmp], metas = ids.map(playerMeta), colors = [col(metas[0].team), col(metas[1].team) === col(metas[0].team) ? "#e8eef5" : col(metas[1].team)];
+    const posOf = (m, id) => m.pos || (plogs[id] || {}).pos || "";
+    const statsAll = ["fp", "py", "pc", "ptd", "pint", "ry", "ra", "recy", "rec", "tg", "rry", "td"];
+    // only stats that are a real part of at least one player's game (2+ games with a nonzero value)
+    const avail = statsAll.filter((k) => ids.some((id) => ((plogs[id] && plogs[id].log) || []).filter((e) => statVal(e, k) > 0).length >= 2));
+    if (!pd.stat || !avail.includes(pd.stat)) pd.stat = avail.includes("fp") ? "fp" : avail[0];
+    const k = pd.stat;
+    const S = ids.map((id) => seriesFor(id, k));
+    const M = ids.map((id, i) => modelDist(id, metas[i].team, k));
+    if (pd.line == null || isNaN(pd.line)) {
+      const meds = M.map((m) => (m.mp ? m.mp[Math.floor(m.mp.length / 2)] : null)).filter((x) => x != null);
+      pd.line = k === "td" ? 0.5 : Math.floor(meds.length ? meds.reduce((a, b) => a + b, 0) / meds.length : 10) + 0.5;
+    }
+    const line = pd.line;
+    const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    const med = (a) => { const s2 = [...a].sort((x, y) => x - y); return s2.length ? s2[Math.floor((s2.length - 1) / 2)] : 0; };
+    const fmt1 = (v) => (Number.isInteger(v) ? v : v.toFixed(1));
+    // grouped bars, aligned by "games ago"
+    const n = Math.max(S[0].vals.length, S[1].vals.length), W = 520, H = 200, padL = 30, padB = 22, padT = 12;
+    const maxV = Math.max(line * 1.15, ...S[0].vals, ...S[1].vals, 1), gw = n ? (W - padL - 4) / n : 0, Y = (v) => H - padB - (v / maxV) * (H - padB - padT);
+    let svg = "";
+    for (let t = 0; t <= 4; t++) { const v = (maxV * t) / 4; svg += `<line x1="${padL}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#1d2a38"/><text x="${padL - 4}" y="${Y(v) + 3}" fill="#7d8ea1" font-size="9" font-family="monospace" text-anchor="end">${Math.round(v)}</text>`; }
+    for (let g = 0; g < n; g++) {
+      [0, 1].forEach((pi) => {
+        const arr = S[pi].vals, idx = arr.length - n + g; if (idx < 0) return;
+        const v = arr[idx], x = padL + g * gw + gw * 0.12 + pi * gw * 0.38, w = gw * 0.36;
+        svg += `<rect x="${x}" y="${Y(v)}" width="${w}" height="${Math.max(1, H - padB - Y(v))}" rx="2" fill="${colors[pi]}" opacity="${v > line ? 0.95 : 0.4}"><title>${metas[pi].name}: ${v}</title></rect>`;
+      });
+      svg += `<text x="${padL + g * gw + gw / 2}" y="${H - 6}" fill="#7d8ea1" font-size="9" font-family="monospace" text-anchor="middle">${n - g === 1 ? "last" : "-" + (n - g - 1)}</text>`;
+    }
+    svg += `<line x1="${padL}" x2="${W}" y1="${Y(line)}" y2="${Y(line)}" stroke="#f2c94c" stroke-width="2" stroke-dasharray="6 4"/><text x="${W - 2}" y="${Y(line) - 5}" fill="#f2c94c" font-size="11" font-family="monospace" text-anchor="end">line ${line}</text>`;
+    // metrics
+    const rows = [];
+    const add = (label, vals, better = "high", show = (v) => fmt1(v)) => rows.push({ label, vals, better, show });
+    add("Average", S.map((s2) => avg(s2.vals)));
+    add("Median", S.map((s2) => med(s2.vals)));
+    add(`Over ${line}`, S.map((s2) => (s2.vals.length ? s2.vals.filter((v) => v > line).length / s2.vals.length : 0)), "high", (v) => Math.round(v * 100) + "%");
+    add("Last 5 avg", ids.map((id) => avg(((plogs[id] && plogs[id].log) || []).filter((e) => e.s === model.season).slice(-5).map((e) => statVal(e, k)))));
+    add("Best game", S.map((s2) => (s2.vals.length ? Math.max(...s2.vals) : 0)));
+    add("Worst game", S.map((s2) => (s2.vals.length ? Math.min(...s2.vals) : 0)));
+    const shareOf = (id, pos) => { const g = seriesFor(id, k).games; const x = g.map((e) => (pos === "RB" ? (e.tra ? (e.ra || 0) / e.tra : 0) : e.ttg ? (e.tg || 0) / e.ttg : 0)); return avg(x); };
+    const pos0 = posOf(metas[0], ids[0]), pos1 = posOf(metas[1], ids[1]);
+    if (pos0 !== "QB" && pos1 !== "QB") add("Target / carry share", [shareOf(ids[0], pos0), shareOf(ids[1], pos1)], "high", (v) => Math.round(v * 100) + "%");
+    add("Model next game (median)", M.map((m) => (m.mp ? m.mp[Math.floor(m.mp.length / 2)] : NaN)));
+    add(`Model over ${line}`, M.map((m) => (m.mp ? m.mp.filter((v) => v > line).length / m.mp.length : NaN)), "high", (v) => Math.round(v * 100) + "%");
+    if (fant) {
+      const fp = ids.map((id) => fant.players.filter((p) => p.id === id).sort((a, b) => a.week - b.week)[0]);
+      if (fp[0] || fp[1]) add(`Fantasy proj (${ft.fmt === "ppr" ? "PPR" : ft.fmt === "half" ? "half" : "std"})`, fp.map((p) => (p ? p.mean[ft.fmt] : NaN)));
+    }
+    const nx = metas.map((m) => nextGame(m.team));
+    const tbl = rows.map((r) => {
+      const [a, b] = r.vals, ok = !isNaN(a) && !isNaN(b) && a !== b, win = ok ? ((r.better === "high") === (a > b) ? 0 : 1) : -1;
+      return `<tr><td>${r.label}</td>${[a, b].map((v, i) => `<td class="${win === i ? "hi" : ""}">${isNaN(v) ? "–" : r.show(v)}</td>`).join("")}</tr>`;
+    }).join("");
+    $("pd").innerHTML = `<button class="pd-x" title="Close (Esc)">✕</button>
+      <h3 class="pd-name" style="font-size:18px"><span class="plink" data-pid="${ids[0]}" style="color:${colors[0]}">${metas[0].name}</span> <span class="dim">vs</span> <span class="plink" data-pid="${ids[1]}" style="color:${colors[1]}">${metas[1].name}</span></h3>
+      <div class="pd-sub">${metas.map((m, i) => `${m.team} ${posOf(m, ids[i])}${nx[i] ? " · next " + (nx[i].away === m.team ? "@ " + nx[i].home : "vs " + nx[i].away) : ""}`).join(" &nbsp;|&nbsp; ")}</div>
+      <div class="pd-cmpbar"><button id="pdCmpEnd">✕ end comparison</button></div>
+      <div class="pd-chips">${avail.map((s2) => `<button data-s="${s2}" class="${s2 === k ? "on" : ""}">${PSTAT[s2]}</button>`).join("")}</div>
+      <div class="pd-ctl"><label>Line <input id="pdLine" type="number" step="0.5" value="${line}"></label>
+        <div class="seg" id="pdRange">${[["L5", "Last 5"], ["L10", "Last 10"], ["season", String(model.season)], ["last", String(model.season - 1)]].map(([v, t]) => `<button data-v="${v}" class="${pd.range === v ? "on" : ""}">${t}</button>`).join("")}</div></div>
+      <div class="pd-chart"><svg viewBox="0 0 ${W} ${H}">${svg}</svg>
+        <div class="gd-note" style="margin:2px 6px 6px"><span style="color:${colors[0]}">■</span> ${metas[0].name} &nbsp; <span style="color:${colors[1]}">■</span> ${metas[1].name} · faded bars = under the line · aligned by games ago</div></div>
+      <div class="sec"><h4>Head to head · ${PSTAT[k]}</h4><table class="pd-h2h"><tr><th></th><th style="color:${colors[0]}">${metas[0].short || metas[0].name}</th><th style="color:${colors[1]}">${metas[1].short || metas[1].name}</th></tr>${tbl}</table></div>`;
+    $("pd").querySelector(".pd-x").onclick = closePlayer;
+    $("pdCmpEnd").onclick = () => { pd.cmp = null; pd.line = null; renderPlayer(); };
+    $("pd").querySelectorAll(".pd-chips button").forEach((b) => (b.onclick = () => { pd.stat = b.dataset.s; pd.line = null; renderPlayer(); }));
+    $("pd").querySelectorAll("#pdRange button").forEach((b) => (b.onclick = () => { pd.range = b.dataset.v; renderPlayer(); }));
+    $("pdLine").onchange = () => { pd.line = +$("pdLine").value; renderPlayer(); };
+  }
+  function renderPlayerSingle() {
     const pid = pd.pid, meta = playerMeta(pid), L = (plogs[pid] && plogs[pid].log) || [];
     const pos = meta.pos || (plogs[pid] || {}).pos || "";
     const statsFor = pos === "QB" ? ["py", "pc", "ptd", "pint", "ry", "fp"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td", "fp"] : ["recy", "rec", "tg", "rry", "td", "fp"];
