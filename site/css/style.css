@@ -180,9 +180,66 @@ table.sc .bf { font-size: 10px; color: var(--dim); border: 1px solid var(--line)
 table.sc .up { color: var(--accent); font-size: 11px; }
 .card .v.good { color: var(--good); } .card .v.bad { color: var(--bad); }
 
+
 /* edge board */
-table.edges td.ev { font-weight: 700; }
-table.edges .flag { font-size: 10px; color: var(--accent); border: 1px solid #5a4a1a; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
-table.edges .flag.red { color: var(--bad); border-color: #5a2323; }
-table.edges .book { color: var(--dim); font-size: 11px; margin-left: 4px; }
-table.edges .gm { color: var(--dim); font-size: 11px; }
+.edhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.edhead h2 { margin: 0 0 2px; font: 600 18px var(--mono); }
+.edhelp { max-width: 520px; font-size: 13px; color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.edhelp summary { cursor: pointer; color: var(--text); font: 600 12px var(--mono); }
+.edhelp p { margin: 8px 0 2px; }
+.edbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0; }
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; font: 12px var(--mono); color: var(--dim); border-radius: 6px; }
+.seg button.on { background: var(--panel2); color: var(--accent); box-shadow: inset 0 0 0 1px #33475c; }
+.scope { font: 12px var(--mono); color: var(--dim); }
+.scope .chip { display: inline-flex; gap: 8px; align-items: center; background: var(--panel2); border: 1px solid var(--accent); color: var(--text); border-radius: 999px; padding: 4px 6px 4px 12px; }
+.scope .chip button { border: 0; background: #2a3a4c; border-radius: 999px; padding: 2px 9px; font: 11px var(--mono); }
+
+.edtop { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.topcard { --tier: var(--good); position: relative; overflow: hidden; background: linear-gradient(160deg, color-mix(in srgb, var(--tier) 16%, var(--panel)) 0%, var(--panel) 65%);
+  border: 1px solid color-mix(in srgb, var(--tier) 45%, var(--line)); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
+.topcard:hover { border-color: var(--tier); }
+.topcard .rank { position: absolute; top: 10px; right: 12px; font: 700 11px var(--mono); color: var(--tier); letter-spacing: .1em; }
+.tc-game { font: 11px var(--mono); color: var(--dim); letter-spacing: .04em; }
+.tc-bet { font: 600 15px var(--sans); margin: 4px 0 8px; line-height: 1.25; min-height: 38px; }
+.tc-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.tc-ev { margin-left: auto; font: 700 24px var(--mono); color: var(--tier); }
+.tc-cap { font: 11px var(--mono); color: var(--dim); margin-top: 5px; display: flex; justify-content: space-between; }
+.price { font: 700 14px var(--mono); }
+.bookpill { font: 10px var(--mono); color: #c5d1de; background: #1b2735; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+
+.pbar { position: relative; height: 8px; background: #1a2532; border-radius: 4px; margin-top: 8px; }
+.pbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--good); }
+.pbar i.neg { background: var(--bad); }
+.pbar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; border-radius: 1px; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+
+.edgame { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+.edgame.focus { border-color: var(--accent); }
+.eg-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; cursor: pointer;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--a) 22%, transparent), transparent 35%, transparent 65%, color-mix(in srgb, var(--h) 22%, transparent)); border-bottom: 1px solid var(--line); }
+.eg-teams { font: 700 17px var(--mono); }
+.eg-time, .eg-model { font: 12px var(--mono); color: var(--dim); }
+.eg-count { font: 700 11px var(--mono); color: #0b0f14; background: var(--good); border-radius: 999px; padding: 2px 8px; }
+.eg-count.zero { background: #2a3a4c; color: var(--dim); }
+.eg-open { margin-left: auto; font: 12px var(--mono); padding: 4px 10px; }
+.erow { display: grid; grid-template-columns: minmax(220px, 2.2fr) 150px minmax(160px, 1.6fr) 70px 90px 64px; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid #121c27; }
+.erow:last-child { border-bottom: 0; }
+.erow:hover { background: #0f1822; }
+.erow.hdr { font: 10px var(--mono); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; padding-top: 7px; padding-bottom: 5px; }
+.ebet { font-size: 14px; }
+.ebet .tag { display: inline-block; font: 700 9px var(--mono); letter-spacing: .08em; color: var(--dim); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-right: 7px; vertical-align: 2px; }
+.ebet .flag { font: 10px var(--mono); color: var(--accent); border: 1px solid #5a4a1a; border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+.ebet .flag.red { color: var(--bad); border-color: #5a2323; }
+.eprob .pbar { margin-top: 0; }
+.eprob .lbl { display: flex; justify-content: space-between; font: 10px var(--mono); color: var(--dim); margin-top: 4px; }
+.eedge { font: 600 13px var(--mono); text-align: right; }
+.evb { justify-self: end; font: 700 12px var(--mono); border-radius: 6px; padding: 4px 8px; min-width: 72px; text-align: center; }
+.evb.t3 { background: #1f9d63; color: #fff; } .evb.t2 { background: #17573b; color: #9ff0c9; } .evb.t1 { background: #13261d; color: #7fd8ac; } .evb.t0 { background: #2b1618; color: #f19a9a; }
+.emed { font: 12px var(--mono); color: var(--dim); text-align: right; }
+.eempty { padding: 14px; color: var(--dim); font-size: 13px; }
+.games button .edot { display: inline-block; min-width: 16px; margin-left: 6px; font: 700 10px var(--mono); color: #0b0f14; background: var(--good); border-radius: 999px; padding: 0 5px; }
+@media (max-width: 860px) {
+  .erow { grid-template-columns: 1fr auto; } .erow .eprob { grid-column: 1 / -1; } .erow .eedge, .erow .emed, .erow.hdr { display: none; }
+}
+.topcard .flag { display: inline-block; font: 10px var(--mono); color: var(--accent); border: 1px solid #5a4a1a; border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+.topcard .flag.red { color: var(--bad); border-color: #5a2323; }

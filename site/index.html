@@ -119,19 +119,22 @@
 
   <!-- EDGE BOARD -->
   <section id="tab-edges" class="pane">
-    <div class="scorehead">
-      <h2>Edge board</h2>
-      <p class="dim">Every game with sportsbook lines is simulated 10,000 times and compared with the <b>best price</b> across major US books. <b>Edge</b> = model probability minus the book's implied probability. <b>EV</b> = expected profit per $1 if the model were right. Big gaps usually mean the model is missing something (an injury, a role change, a weather update), so treat them as things to check, not bets.</p>
-      <p class="mono dim" id="edMeta"></p>
-      <div class="controls">
-        <label>Market <select id="edKind"><option value="">All</option><option value="game">Game lines</option><option value="prop">Player props</option></select></label>
-        <label>Game <select id="edGame"><option value="">All games</option></select></label>
-        <label>Min EV <select id="edMin"><option value="-1">Any</option><option value="0">0%+</option><option value="0.03" selected>3%+</option><option value="0.05">5%+</option><option value="0.1">10%+</option></select></label>
-        <label class="chk"><input type="checkbox" id="edBest" checked> best side only</label>
-      </div>
+    <div class="edhead">
+      <div><h2>Edge board</h2><p class="mono dim" id="edMeta"></p></div>
+      <details class="edhelp"><summary>How to read this</summary>
+        <p>Every game with sportsbook lines is simulated 10,000 times and compared with the <b>best price</b> across major US books.
+        The bar shows the model's chance (filled) against the book's implied chance (white tick). <b>Edge</b> is the gap in percentage points.
+        <b>EV</b> is the expected profit per $1 if the model is right. Huge gaps usually mean the model is missing news (an injury, a role change), so treat them as things to check, not bets.</p>
+      </details>
     </div>
-    <div class="cards" id="edCards"></div>
-    <table class="props edges" id="edTable"></table>
+    <div class="edbar">
+      <div class="seg" id="edKind"><button data-v="" class="on">All</button><button data-v="game">Game lines</button><button data-v="prop">Player props</button></div>
+      <div class="seg" id="edMin"><button data-v="-1">Any</button><button data-v="0">0%+</button><button data-v="0.03" class="on">3%+</button><button data-v="0.05">5%+</button><button data-v="0.1">10%+</button></div>
+      <label class="chk"><input type="checkbox" id="edBest" checked> best side only</label>
+      <span class="scope" id="edScope"></span>
+    </div>
+    <div class="edtop" id="edTop"></div>
+    <div id="edGames"></div>
   </section>
 
   <!-- SCORECARD -->

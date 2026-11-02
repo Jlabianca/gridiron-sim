@@ -25,6 +25,9 @@
     initTabs();
     initControls();
     fromHash() || selectGame(defaultGame());
+    booted = true;
+    initEdgeControls();
+    fetchEdges();
   }).catch((e) => { $("dataLine").textContent = "Could not load data/model.json — serve this folder over http (see README). " + e; });
 
   function defaultGame() {
@@ -57,7 +60,9 @@
     $("gameList").innerHTML = model.schedule.filter((g) => g.week === w).map((g) => {
       const fin = g.home_score != null ? ` <span class="fin">${g.away_score}-${g.home_score}</span>` : "";
       const sel = g.away === cur.away && g.home === cur.home ? "sel" : "";
-      return `<button class="${sel}" data-a="${g.away}" data-h="${g.home}">${g.away} @ ${g.home}${fin}</button>`;
+      const ec = g.home_score == null ? edgeCount(g.away, g.home) : 0;
+      const dot = ec ? `<span class="edot" title="${ec} model edges of 5%+ on the edge board">${ec}</span>` : "";
+      return `<button class="${sel}" data-a="${g.away}" data-h="${g.home}">${g.away} @ ${g.home}${fin}${dot}</button>`;
     }).join("");
     $("gameList").querySelectorAll("button").forEach((b) => (b.onclick = () => selectGame({ away: b.dataset.a, home: b.dataset.h })));
   }
@@ -65,8 +70,10 @@
     return model.schedule.find((g) => g.away === a && g.home === h && g.week === model.target_week) ||
       model.schedule.find((g) => g.away === a && g.home === h && g.home_score == null) || null;
   }
+  let booted = false;
   function selectGame(g, s) {
     if (!model.teams[g.away] || !model.teams[g.home]) return;
+    if (booted) edScope = "game";
     cur = { away: g.away, home: g.home };
     $("awaySel").value = g.away; $("homeSel").value = g.home;
     outSet = new Set(NFLSim.defaultOut(model, [g.away, g.home]));
@@ -78,6 +85,7 @@
     projStale = true; projResult = null;
     $("projOut").classList.add("hidden"); $("runInfo").textContent = "";
     newGame(s || randSeed());
+    if (edges && $("tab-edges").classList.contains("active")) renderEdges();
   }
   const randSeed = () => Math.floor(Math.random() * 1e9);
 
@@ -614,49 +622,107 @@
   }
 
   // ---------------- edge board ----------------
-  let edges = null;
+  let edges = null, edScope = "all", edLoading = null;
+  const edState = { kind: "", min: 0.03 };
+  function fetchEdges() {
+    if (!edLoading) edLoading = fetch("data/edges.json?" + Date.now()).then((r) => { if (!r.ok) throw 0; return r.json(); })
+      .then((e) => { edges = e; renderGames(); return e; }).catch(() => null);
+    return edLoading;
+  }
   function loadEdges() {
-    if (edges) return renderEdges();
-    fetch("data/edges.json?" + Date.now()).then((r) => { if (!r.ok) throw 0; return r.json(); }).then((e) => {
-      edges = e;
-      $("edGame").innerHTML = `<option value="">All games</option>` + e.games.map((g) => `<option value="${g.game}">${g.away} @ ${g.home} · ${new Date(g.commence).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</option>`).join("");
-      ["edKind", "edGame", "edMin", "edBest"].forEach((id) => ($(id).onchange = renderEdges));
+    fetchEdges().then((e) => {
+      if (!e) {
+        $("edMeta").textContent = "";
+        $("edGames").innerHTML = `<div class="edgame"><div class="eempty">No lines yet. The board fills in after the next daily update.</div></div>`;
+        return;
+      }
       renderEdges();
-    }).catch(() => {
-      $("edMeta").textContent = "";
-      $("edCards").innerHTML = `<div class="card"><div class="k">No lines yet</div><div class="s">The board fills in after the next daily update with your Odds API key.</div></div>`;
     });
   }
+  function edgeCount(away, home) {
+    if (!edges) return 0;
+    return edges.bets.filter((b) => b.game === away + "@" + home && b.ev >= 0.05).length;
+  }
+  function initEdgeControls() {
+    document.querySelectorAll("#edKind button, #edMin button").forEach((b) => (b.onclick = () => {
+      b.parentElement.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      if (b.parentElement.id === "edKind") edState.kind = b.dataset.v; else edState.min = +b.dataset.v;
+      renderEdges();
+    }));
+    $("edBest").onchange = renderEdges;
+    $("edScope").onclick = (e) => { if (e.target.closest("button")) { edScope = "all"; renderEdges(); } };
+    const goGame = (el, tab) => {
+      selectGame({ away: el.dataset.a, home: el.dataset.h });
+      if (tab) document.querySelector(`.tab[data-tab="${tab}"]`).click();
+    };
+    $("edGames").addEventListener("click", (e) => {
+      const open = e.target.closest(".eg-open"); if (open) return goGame(open, "watch");
+      const head = e.target.closest(".eg-head"); if (head) goGame(head);
+    });
+    $("edTop").addEventListener("click", (e) => { const c = e.target.closest(".topcard"); if (c) goGame(c); });
+  }
   function renderEdges() {
-    const e = edges, kind = $("edKind").value, gsel = $("edGame").value, minEv = +$("edMin").value, bestOnly = $("edBest").checked;
-    const fmtT = (t) => (t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "–");
-    $("edMeta").textContent = `Lines updated ${fmtT(e.updated)} · ${e.games.length} games · props fetched within ~30h of kickoff · ${e.credits_remaining != null ? e.credits_remaining + " API credits left this month" : ""}`;
-    let list = e.bets.filter((b) => (!gsel || b.game === gsel) && (!kind || (kind === "prop" ? b.kind === "prop" : b.kind !== "prop")));
-    if (bestOnly) { // keep only the better side of each market
+    const e = edges; if (!e) return;
+    const fmtT = (t) => (t ? new Date(t).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "–");
+    $("edMeta").textContent = `Lines updated ${fmtT(e.updated)} · ${e.games.length} games · ${e.bets.length} bets priced` +
+      (e.credits_remaining != null ? ` · ${e.credits_remaining} API credits left` : "");
+    const focus = edScope === "game" ? cur.away + "@" + cur.home : null;
+    const inScope = !focus || e.games.some((g) => g.game === focus);
+    $("edScope").innerHTML = focus
+      ? `<span class="chip">Showing ${cur.away} @ ${cur.home}${inScope ? "" : " (no lines)"} <button title="Show every game">✕ all games</button></span>`
+      : "All games · pick a game above to focus on it";
+    let list = e.bets.filter((b) => (!focus || b.game === focus) && (!edState.kind || (edState.kind === "prop" ? b.kind === "prop" : b.kind !== "prop")));
+    if ($("edBest").checked) {
       const seen = new Set();
       list = list.filter((b) => { const k = b.game + "|" + b.kind + "|" + (b.player || "") + "|" + (b.stat || "") + "|" + (b.kind === "ml" ? "ml" : Math.abs(b.line)); if (seen.has(k)) return false; seen.add(k); return true; });
     }
-    const shown = list.filter((b) => b.ev >= minEv);
-    const props = e.games.reduce((a, g) => a + g.props, 0), matched = e.games.reduce((a, g) => a + g.matched, 0);
-    const cards = [
-      ["Bets priced", e.bets.length, `${e.games.length} games · ${matched}/${props} prop lines matched to players`],
-      ["Model edges ≥ 5% EV", e.bets.filter((b) => b.ev >= 0.05).length, "before checking news"],
-      ["Biggest edge", e.bets.length ? (e.bets[0].ev * 100).toFixed(1) + "%" : "–", e.bets.length ? e.bets[0].label : ""],
-    ];
-    $("edCards").innerHTML = cards.map(([k, v, s2]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s2}</div></div>`).join("");
-    const signed = (x) => (x > 0 ? "+" : "") + (x * 100).toFixed(1);
-    $("edTable").innerHTML = `<tr><th>Bet</th><th>Game</th><th>Best price</th><th>Model</th><th>Book implied</th><th>Edge</th><th>EV</th><th>Model median</th></tr>` +
-      (shown.length ? shown.slice(0, 300).map((b) => {
-        const flags = [];
-        if (b.out_in_model) flags.push(`<span class="flag red" title="This player is ruled out or not used in the model">out in model</span>`);
-        if (b.ev > 0.2) flags.push(`<span class="flag" title="Gaps this big usually mean the model is missing news">check news</span>`);
-        const g = e.games.find((x) => x.game === b.game);
-        return `<tr><td>${b.label}${flags.join("")}</td><td class="gm">${g ? g.away + " @ " + g.home : b.game}</td>
-          <td>${b.price > 0 ? "+" + b.price : b.price}<span class="book">${b.book || ""}</span></td>
-          <td>${(b.p * 100).toFixed(1)}%</td><td>${(b.p_implied * 100).toFixed(1)}%</td>
-          <td class="${b.p > b.p_implied ? "edge-hi" : "edge-lo"}">${signed(b.p - b.p_implied)}</td>
-          <td class="ev ${b.ev > 0 ? "edge-hi" : "edge-lo"}">${signed(b.ev)}%</td><td>${b.median != null ? b.median : ""}</td></tr>`;
-      }).join("") : `<tr><td colspan="8" class="dim">Nothing at this threshold.</td></tr>`);
+    const shown = list.filter((b) => b.ev >= edState.min);
+    const gameOf = (b) => e.games.find((x) => x.game === b.game) || { away: b.game.split("@")[0], home: b.game.split("@")[1] };
+    const tier = (ev) => (ev >= 0.1 ? 3 : ev >= 0.05 ? 2 : ev >= 0 ? 1 : 0);
+    const signed = (x, d = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x * 100).toFixed(d);
+    const priceTxt = (p) => (p > 0 ? "+" + p : "" + p);
+    const bar = (b) => `<div class="pbar"><i class="${b.p >= b.p_implied ? "" : "neg"}" style="width:${(b.p * 100).toFixed(1)}%"></i><b style="left:calc(${(b.p_implied * 100).toFixed(1)}% - 1px)"></b></div>`;
+    const tag = (b) => ({ ml: "ML", spread: "SPREAD", total: "TOTAL", prop: b.stat === "td" ? "TD" : "PROP" })[b.kind];
+    const flags = (b) => (b.out_in_model ? `<span class="flag red" title="Ruled out or unused in the model">out in model</span>` : "") +
+      (b.ev > 0.2 ? `<span class="flag" title="Gaps this big usually mean the model is missing news">check news</span>` : "");
+
+    // top plays
+    const top = shown.filter((b) => b.ev > 0).slice(0, 4);
+    $("edTop").innerHTML = top.map((b, i) => {
+      const g = gameOf(b);
+      return `<div class="topcard" style="--tier:${b.ev > 0.2 ? "var(--accent)" : "var(--good)"}" data-a="${g.away}" data-h="${g.home}" title="Open this game">
+        <span class="rank">#${i + 1}</span><div class="tc-game">${g.away} @ ${g.home} · ${fmtT(b.commence)}</div>
+        <div class="tc-bet">${b.label}${flags(b)}</div>
+        <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span><span class="tc-ev">${signed(b.ev)}%</span></div>
+        ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span>Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
+    }).join("");
+
+    // grouped by game
+    const games = e.games.filter((g) => !focus || g.game === focus).sort((a, b) => (a.commence < b.commence ? -1 : 1));
+    const hdr = `<div class="erow hdr"><span>Bet</span><span>Best price</span><span>Model vs book</span><span style="text-align:right">Edge</span><span style="text-align:right">EV</span><span style="text-align:right">Median</span></div>`;
+    $("edGames").innerHTML = games.map((g) => {
+      const rows = shown.filter((b) => b.game === g.game);
+      if (!rows.length && !focus) return "";
+      const fav = g.p_home >= 0.5 ? g.home : g.away, fp = Math.max(g.p_home, 1 - g.p_home);
+      const pa = (g.proj_total / 2 - g.proj_margin / 2).toFixed(0), ph = (g.proj_total / 2 + g.proj_margin / 2).toFixed(0);
+      const n5 = rows.filter((b) => b.ev >= 0.05).length;
+      return `<div class="edgame ${focus ? "focus" : ""}">
+        <div class="eg-head" style="--a:${col(g.away)};--h:${col(g.home)}" data-a="${g.away}" data-h="${g.home}" title="Focus this game">
+          <span class="eg-teams"><span style="color:${col(g.away)}">${g.away}</span> @ <span style="color:${col(g.home)}">${g.home}</span></span>
+          <span class="eg-time">${fmtT(g.commence)}</span>
+          <span class="eg-model">Model: ${fav} ${(fp * 100).toFixed(0)}% · proj ${g.away} ${pa}–${ph} ${g.home}</span>
+          <span class="eg-count ${n5 ? "" : "zero"}">${n5} edge${n5 === 1 ? "" : "s"} 5%+</span>
+          <button class="eg-open" data-a="${g.away}" data-h="${g.home}">Simulate ▸</button></div>
+        ${rows.length ? hdr + rows.map((b) => `<div class="erow">
+            <div class="ebet"><span class="tag">${tag(b)}</span>${b.label}${flags(b)}</div>
+            <div><span class="price">${priceTxt(b.price)}</span> <span class="bookpill">${b.book || ""}</span></div>
+            <div class="eprob">${bar(b)}<div class="lbl"><span>model ${(b.p * 100).toFixed(1)}%</span><span>book ${(b.p_implied * 100).toFixed(1)}%</span></div></div>
+            <div class="eedge ${b.p >= b.p_implied ? "edge-hi" : "edge-lo"}">${signed(b.p - b.p_implied)}</div>
+            <div class="evb t${tier(b.ev)}">${signed(b.ev)}%</div>
+            <div class="emed">${b.median != null ? b.median : ""}</div></div>`).join("")
+          : `<div class="eempty">Nothing at this threshold${g.props ? "" : " · player props appear about 30 hours before kickoff"}.</div>`}
+      </div>`;
+    }).join("") || `<div class="edgame"><div class="eempty">Nothing at this threshold.</div></div>`;
   }
 
   // ---------------- scorecard ----------------
