@@ -226,7 +226,7 @@ table.sc .up { color: var(--accent); font-size: 11px; }
 .eg-count { font: 700 11px var(--mono); color: #0b0f14; background: var(--good); border-radius: 999px; padding: 2px 8px; }
 .eg-count.zero { background: #2a3a4c; color: var(--dim); }
 .eg-open { margin-left: auto; font: 12px var(--mono); padding: 4px 10px; }
-.erow { display: grid; grid-template-columns: minmax(220px, 2.2fr) 150px minmax(160px, 1.6fr) 70px 90px 64px; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid #121c27; }
+.erow { display: grid; grid-template-columns: minmax(220px, 2.2fr) 150px minmax(160px, 1.6fr) 70px 150px 64px; gap: 12px; align-items: center; padding: 9px 14px; border-bottom: 1px solid #121c27; }
 .erow:last-child { border-bottom: 0; }
 .erow:hover { background: #0f1822; }
 .erow.hdr { font: 10px var(--mono); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; padding-top: 7px; padding-bottom: 5px; }
@@ -399,3 +399,50 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 table.pd-h2h th, table.pd-h2h td { text-align: right; font-size: 13px; padding: 6px 8px; }
 table.pd-h2h th:first-child, table.pd-h2h td:first-child { text-align: left; color: var(--dim); }
 table.pd-h2h td.hi { color: var(--good); font-weight: 700; }
+
+/* confidence labels */
+.conf { display: inline-block; font: 700 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; border-radius: 4px; padding: 2px 7px; vertical-align: 1px; white-space: nowrap; }
+.conf.Strong { background: var(--good); color: #06140c; } .conf.Lean { background: #1d4d36; color: #9ff0c9; }
+.conf.Pass, .conf.Toss-up { background: #2a3a4c; color: #b5c3d1; } .conf.Check { background: #4a3a10; color: var(--accent); }
+
+/* today */
+.td-hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.td-hero h2 { margin: 0; font: 700 24px var(--sans); }
+.td-hero p { margin: 4px 0 0; color: var(--dim); font-size: 14px; }
+.td-days { display: flex; gap: 6px; flex-wrap: wrap; }
+.td-best { background: linear-gradient(135deg, #102a1e, var(--panel) 60%); border: 1px solid #1f4d36; border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+.td-best h3 { margin: 0 0 10px; font: 600 12px var(--mono); letter-spacing: .1em; color: var(--good); text-transform: uppercase; }
+.td-bets { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.td-bet { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.td-bet .gm { font: 11px var(--mono); color: var(--dim); }
+.td-bet .bt { font: 600 15px var(--sans); margin: 5px 0; }
+.td-bet .why { font-size: 12px; color: #c5d1de; }
+.td-day { font: 600 13px var(--mono); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; margin: 20px 0 10px; }
+.td-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
+.tg { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+.tg-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 12px 14px 8px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--a) 22%, transparent), transparent 40%, transparent 60%, color-mix(in srgb, var(--h) 22%, transparent)); }
+.tg-team { font: 700 22px var(--mono); }
+.tg-team.h { text-align: right; }
+.tg-team small { display: block; font: 12px var(--mono); color: var(--dim); }
+.tg-mid { text-align: center; font: 11px var(--mono); color: var(--dim); }
+.tg-mid b { display: block; font: 700 18px var(--mono); color: var(--text); }
+.tg-wp { display: flex; height: 6px; margin: 0 14px; border-radius: 3px; overflow: hidden; }
+.tg-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 14px 4px; }
+.tg-pick { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; }
+.tg-pick .k { font: 10px var(--mono); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; }
+.tg-pick .v { font: 600 14px var(--mono); margin: 3px 0; }
+.tg-text { padding: 8px 14px; font-size: 14px; line-height: 1.5; color: #d6e2ee; }
+.tg-why summary { cursor: pointer; padding: 2px 14px 8px; font: 600 12px var(--mono); color: var(--accent); list-style: none; }
+.tg-why summary::-webkit-details-marker { display: none; }
+.tg-why ul { margin: 0; padding: 0 14px 8px 14px; list-style: none; }
+.tg-why li { display: grid; grid-template-columns: 22px 1fr; gap: 6px; font-size: 13px; color: #c5d1de; padding: 4px 0; border-top: 1px solid #121c27; }
+.tg-watch { padding: 4px 14px 10px; display: flex; gap: 6px; flex-wrap: wrap; font: 12px var(--mono); }
+.tg-watch .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.tg-foot { margin-top: auto; display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.tg-foot button { font: 12px var(--mono); padding: 5px 10px; }
+.tg-wx { font-size: 12px; }
+@media (max-width: 600px) { .td-grid { grid-template-columns: 1fr; } .tg-picks { grid-template-columns: 1fr 1fr 1fr; gap: 5px; } .tg-pick .v { font-size: 12px; } }
+
+body[data-tab="today"] .picker, body[data-tab="score"] .picker, body[data-tab="season"] .picker, body[data-tab="fantasy"] .picker { display: none; }
+.evb .conf { margin-left: 6px; font-size: 9px; padding: 1px 5px; }

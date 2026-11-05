@@ -14,14 +14,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Gridiron">
 </head>
-<body>
+<body data-tab="today">
 <header class="top">
   <div class="brand">
     <span class="mark">◆</span> GRIDIRON SIM
     <span class="sub" id="dataLine">loading data…</span>
   </div>
   <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="watch" role="tab">Watch a sim</button>
+    <button class="tab active" data-tab="today" role="tab">Today</button>
+    <button class="tab" data-tab="watch" role="tab">Watch a sim</button>
     <button class="tab" data-tab="live" role="tab">Game day</button>
     <button class="tab" data-tab="proj" role="tab">Projections &amp; props</button>
     <button class="tab" data-tab="fantasy" role="tab">Fantasy</button>
@@ -42,8 +43,16 @@
 </section>
 
 <main>
+  <!-- TODAY -->
+  <section id="tab-today" class="pane active">
+    <div class="td-hero" id="tdHero"></div>
+    <div id="tdBest"></div>
+    <div id="tdGames"></div>
+    <p class="note">Labels show how strongly the model disagrees with the sportsbook. <b>Strong</b>: a big gap. <b>Lean</b>: a modest one. <b>Pass</b>: about where the book is. <b>Check</b>: a gap so big the model is probably missing news. They aren't guarantees: see the Scorecard tab for how the model has actually done.</p>
+  </section>
+
   <!-- WATCH -->
-  <section id="tab-watch" class="pane active">
+  <section id="tab-watch" class="pane">
     <div class="board">
       <div class="score">
         <div class="trow" id="rowAway"><i class="bar"></i><span class="abbr"></span><span class="pts">0</span></div>

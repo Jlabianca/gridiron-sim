@@ -44,8 +44,8 @@
     if (sp) { speed = +sp; $("speedSel").value = String(sp); }
     const fmt = store.get("fmt", null);
     if (fmt) { ft.fmt = fmt; $("ftFmt").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === fmt)); }
-    const tab = store.get("tab", "watch"), tb = document.querySelector(`.tab[data-tab="${tab}"]`);
-    if (tb && tab !== "watch") tb.click();
+    const tab = store.get("tab", "today"), tb = document.querySelector(`.tab[data-tab="${tab}"]`);
+    if (tb && tab !== "today") tb.click(); else loadToday();
   }).catch((e) => { $("dataLine").textContent = "Could not load data/model.json — serve this folder over http (see README). " + e; });
 
   function defaultGame() {
@@ -185,6 +185,7 @@
   function initTabs() {
     document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => {
       store.set("tab", t.dataset.tab);
+      document.body.dataset.tab = t.dataset.tab;
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
       document.querySelectorAll(".pane").forEach((p) => p.classList.toggle("active", p.id === "tab-" + t.dataset.tab));
       if (t.dataset.tab === "proj" && projStale) runProjections();
@@ -193,6 +194,7 @@
       if (t.dataset.tab === "live") renderGameDay();
       if (t.dataset.tab === "fantasy") loadFantasy();
       if (t.dataset.tab === "season") loadSeason();
+      if (t.dataset.tab === "today") loadToday();
     }));
   }
 
@@ -249,6 +251,74 @@
     startWP();
     $("btnPlay").textContent = "▶ Play";
   }
+
+  // confidence label for a priced bet (same thresholds as scripts/today.js)
+  function betConf(b) {
+    if (b.ev > 0.2 || b.out_in_model) return "Check";
+    if (b.ev >= 0.1 && b.p - b.p_implied >= 0.06) return "Strong";
+    if (b.ev >= 0.04) return "Lean";
+    return "Pass";
+  }
+
+  // ---------------- today ----------------
+  let today = null, todayLoading = null;
+  const conf = (l, title) => `<span class="conf ${l}" title="${title || ({ Strong: "Big gap between the model and the book", Lean: "Modest gap between the model and the book", Pass: "Model is close to the book", "Toss-up": "Too close to call", Check: "Gap is so big the model may be missing news: check injuries first" })[l] || ""}">${l}</span>`;
+  function loadToday() {
+    if (!todayLoading) todayLoading = fetch("data/today.json?" + (model ? model.generated : "")).then((r) => (r.ok ? r.json() : null)).then((t) => (today = t)).catch(() => null);
+    todayLoading.then(renderToday);
+  }
+  const dayName = (d) => new Date(d + "T12:00").toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  const kick = (t) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"} ET`; };
+  function renderToday() {
+    const T = today;
+    if (!T || !T.games.length) {
+      $("tdHero").innerHTML = `<div><h2>Today</h2><p>No upcoming games in the next week, or previews haven't been built yet.</p></div>`;
+      $("tdBest").innerHTML = ""; $("tdGames").innerHTML = ""; return;
+    }
+    const days = [...new Set(T.games.map((g) => g.date))];
+    $("tdHero").innerHTML = `<div><h2>Week ${T.week} at a glance</h2><p>${T.games.length} games · previews built ${T.generated}${T.lines_updated ? " · lines from " + new Date(T.lines_updated).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : ""}</p></div>`;
+    // best bets
+    const betText = (b) => b.kind === "prop" ? b.text : b.text;
+    $("tdBest").innerHTML = T.best_bets.length ? `<div class="td-best"><h3>The model's best bets</h3><div class="td-bets">${T.best_bets.map((b) => {
+      const [a, h] = b.game.split("@");
+      return `<div class="td-bet"><div class="gm">${a} @ ${h} · ${new Date(b.commence).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</div>
+        <div class="bt">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${betText(b)}</span>` : betText(b)} ${conf(b.conf)}</div>
+        <div class="why"><b>${b.price > 0 ? "+" + b.price : b.price}</b> at ${b.book}. Model gives it <b>${Math.round(b.p * 100)}%</b> vs. the book's ${Math.round(b.p_implied * 100)}%.</div></div>`;
+    }).join("")}</div></div>` : "";
+    // games by day
+    const pickHtml = (k, v, label, sub) => `<div class="tg-pick"><div class="k">${k}</div><div class="v">${v}</div>${label ? conf(label) : ""}${sub ? `<div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">${sub}</div>` : ""}</div>`;
+    const wxBadge = (g) => {
+      const w = g.weather; if (!w) return "";
+      if (w.source === "indoor") return `<span class="tg-wx">🏟️ indoors</span>`;
+      const f = w.features || {}; const ic = f.snow > 0 ? "❄️" : f.rain >= 0.4 ? "🌧️" : (w.wind || 0) >= 18 ? "💨" : (w.temp || 60) <= 32 ? "🥶" : "☀️";
+      return `<span class="tg-wx">${ic} ${w.temp != null ? w.temp + "°" : ""}${w.wind != null ? " · " + w.wind + " mph" : ""}</span>`;
+    };
+    $("tdGames").innerHTML = days.map((d) => `<div class="td-day">${dayName(d)}</div><div class="td-grid">${T.games.filter((g) => g.date === d).map((g) => {
+      const A = g.away, H = g.home, pa = 1 - g.p_home;
+      const sp = g.spread, tp = g.total_pick;
+      return `<div class="tg" style="--a:${col(A)};--h:${col(H)}">
+        <div class="tg-head"><div class="tg-team" style="color:${col(A)}">${A}<small>${Math.round(pa * 100)}% · ${g.pts_away.toFixed(0)} pts</small></div>
+          <div class="tg-mid"><b>${kick(g.time)}</b>${g.neutral ? "neutral site" : "@ " + (g.stadium || H)}<br>${wxBadge(g)}</div>
+          <div class="tg-team h" style="color:${col(H)}">${H}<small>${g.pts_home.toFixed(0)} pts · ${Math.round(g.p_home * 100)}%</small></div></div>
+        <div class="tg-wp"><div style="flex:${pa};background:${col(A)}"></div><div style="flex:${g.p_home};background:${col(H)}"></div></div>
+        <div class="tg-picks">
+          ${pickHtml("Winner", `${g.winner.team} ${Math.round(g.winner.p * 100)}%`, g.winner.label)}
+          ${sp ? pickHtml("Spread", `${sp.team} ${sp.line > 0 ? "+" : ""}${sp.line}`, sp.label, `${Math.round(sp.p * 100)}% to cover`) : pickHtml("Spread", "–")}
+          ${tp ? pickHtml("Total", `${tp.side === "over" ? "Over" : "Under"} ${tp.line}`, tp.label, `proj ${g.total.toFixed(0)} · ${Math.round(tp.p * 100)}%`) : pickHtml("Total", g.total.toFixed(0))}
+        </div>
+        <div class="tg-text">${g.preview}</div>
+        <details class="tg-why"><summary>Why? ▸</summary><ul>${g.reasons.map((r) => `<li><span>${r.icon}</span><span>${r.text}</span></li>`).join("")}</ul></details>
+        ${g.watch.length ? `<div class="tg-watch"><span class="dim">Players to watch:</span>${g.watch.map((w) => `<span class="chip"><span class="plink" data-pid="${w.id}" data-stat="fp">${w.name}</span> <span class="dim">${w.ppr.toFixed(1)} pts</span></span>`).join("")}</div>` : ""}
+        ${g.best_bet ? `<div class="tg-watch"><span class="dim">Best bet:</span> <span>${g.best_bet.pid ? `<span class="plink" data-pid="${g.best_bet.pid}" data-stat="${g.best_bet.stat}" data-line="${g.best_bet.line}">${g.best_bet.text}</span>` : g.best_bet.text} <b>${g.best_bet.price > 0 ? "+" + g.best_bet.price : g.best_bet.price}</b></span> ${conf(g.best_bet.conf)}</div>` : ""}
+        <div class="tg-foot"><button data-go="watch" data-a="${A}" data-h="${H}">▶ Watch a sim</button><button data-go="proj" data-a="${A}" data-h="${H}">Props</button><button data-go="edges" data-a="${A}" data-h="${H}">Odds</button><button data-go="live" data-a="${A}" data-h="${H}">Game day</button></div>
+      </div>`;
+    }).join("")}</div>`).join("");
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("#tdGames [data-go]"); if (!b) return;
+    selectGame({ away: b.dataset.a, home: b.dataset.h });
+    document.querySelector(`.tab[data-tab="${b.dataset.go}"]`).click();
+  });
 
   // ---------------- season ----------------
   let season = null, rhist = null;
@@ -1072,17 +1142,18 @@
     const priceTxt = (p) => (p > 0 ? "+" + p : "" + p);
     const bar = (b) => `<div class="pbar" title="Model ${(b.p * 100).toFixed(1)}% (bar) vs book ${(b.p_implied * 100).toFixed(1)}% (yellow marker)"><i class="${b.p >= b.p_implied ? "" : "neg"}" style="width:${(b.p * 100).toFixed(1)}%"></i><b style="left:${(b.p_implied * 100).toFixed(1)}%"></b></div>`;
     const tag = (b) => ({ ml: "ML", spread: "SPREAD", total: "TOTAL", prop: b.stat === "td" ? "TD" : "PROP" })[b.kind];
-    const flags = (b) => (b.out_in_model ? `<span class="flag red" title="Ruled out or unused in the model">out in model</span>` : "") +
-      (b.ev > 0.2 ? `<span class="flag" title="Gaps this big usually mean the model is missing news">check news</span>` : "");
+    const flags = (b) => (b.out_in_model ? `<span class="flag red" title="Ruled out or unused in the model">out in model</span>` : "");
 
     // top plays
-    const top = shown.filter((b) => b.ev > 0).slice(0, 4);
+    // top plays: the biggest Strong/Lean edges (huge "Check" gaps are usually missing news)
+    let top = shown.filter((b) => ["Strong", "Lean"].includes(betConf(b))).slice(0, 4);
+    if (!top.length) top = shown.filter((b) => b.ev > 0).slice(0, 4);
     $("edTop").innerHTML = top.map((b, i) => {
       const g = gameOf(b);
       return `<div class="topcard" style="--tier:${b.ev > 0.2 ? "var(--accent)" : "var(--good)"}" data-a="${g.away}" data-h="${g.home}" title="Open this game">
         <span class="rank">#${i + 1}</span><div class="tc-game">${g.away} @ ${g.home} · ${fmtT(b.commence)}</div>
         <div class="tc-bet">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
-        <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span><span class="tc-ev">${signed(b.ev)}%</span></div>
+        <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span>${conf(betConf(b))}<span class="tc-ev">${signed(b.ev)}%</span></div>
         ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span style="color:#f2c94c">▼ Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
     }).join("");
 
@@ -1107,7 +1178,7 @@
             <div><span class="price">${priceTxt(b.price)}</span> <span class="bookpill">${b.book || ""}</span></div>
             <div class="eprob">${bar(b)}<div class="lbl"><span>model ${(b.p * 100).toFixed(1)}%</span><span>book ${(b.p_implied * 100).toFixed(1)}%</span></div></div>
             <div class="eedge ${b.p >= b.p_implied ? "edge-hi" : "edge-lo"}">${signed(b.p - b.p_implied)}</div>
-            <div class="evb t${tier(b.ev)}">${signed(b.ev)}%</div>
+            <div class="evb t${tier(b.ev)}">${signed(b.ev)}% ${conf(betConf(b))}</div>
             <div class="emed">${b.median != null ? b.median : ""}</div></div>`).join("")
           : `<div class="eempty">Nothing at this threshold${g.props ? "" : " · player props appear about 30 hours before kickoff"}.</div>`}
       </div>`;

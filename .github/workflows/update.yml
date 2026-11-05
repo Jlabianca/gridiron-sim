@@ -57,6 +57,8 @@ jobs:
         run: |
           node scripts/season.js site/data/model.json site/data/season.json 800 10000 | tee season.log
           node scripts/ratings_history.js site/data/season.json site/data/ratings_history.json
+      - name: Today page previews
+        run: node scripts/today.js site/data/model.json site/data/today.json 3000
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

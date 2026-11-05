@@ -4,6 +4,8 @@ A play-by-play NFL game simulator that runs in the browser. Pick a matchup and y
 
 https://jlabianca.github.io/gridiron-sim/
 
+- **Today** (home page): every upcoming game as a simple card with the model's winner, spread and total picks, a plain-English preview, a **Why?** list of the reasons (power ratings, matchup edges, QB changes, injuries, weather, home field, gap vs. the market), players to watch, and the slate's best bets.
+- **Confidence labels** on picks and bets: **Strong** (big gap vs. the book), **Lean** (modest gap), **Pass** (close to the book) or **Check** (a gap so large the model is probably missing news). They measure disagreement with the market, not certainty, so check the Scorecard for the track record.
 - **Watch a sim**: an animated, drive-by-drive replay of one simulated game, with a scoreboard, field view, line score and final box score. Every game comes from a seed, and *Copy link* shares that exact game (for example `#CAR@GB/42`).
 - **Projections & props**: re-run the game 1,000–20,000 times to get win probability, fair moneylines, cover and over/under odds against the market line, the margin and total distributions, and per-player prop distributions. Type in a sportsbook line and it shows the model's over/under probability and fair odds.
 - **Injuries / usage**: toggle players in or out. Players listed Out or Doubtful on the injury report, or not on the active roster, start out. Their carries and targets are re-split among the remaining players.
