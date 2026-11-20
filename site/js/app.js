@@ -15,7 +15,7 @@
   let projResult = null, projStale = true, worker = null;
   const lines = {}; // user-entered prop lines: key `${id}|${stat}`
   let qbSel = { away: "", home: "" };
-  let legs = [], bookOdds = "";
+  let slipOdds = "", slipStake = 10;
   let wpWorker = null, wpJob = 0, wpData = null; // win-probability series for the replay // "" = automatic (most recent starter who isn't ruled out)
 
   // remembered settings (per browser)
@@ -38,6 +38,7 @@
     initControls();
     fromHash() || selectGame(defaultGame());
     booted = true;
+    initSlip();
     initEdgeControls();
     fetchEdges();
     const sp = store.get("speed", null);
@@ -96,7 +97,6 @@
     $("awaySel").value = g.away; $("homeSel").value = g.home;
     outSet = new Set(NFLSim.defaultOut(model, [g.away, g.home]));
     qbSel = { away: "", home: "" };
-    legs = [];
     document.documentElement.style.setProperty("--away", col(g.away));
     document.documentElement.style.setProperty("--home", col(g.home));
     renderGames(); renderRoster(); renderWeather();
@@ -225,11 +225,7 @@
       const d = b.dataset;
       addLeg(d.stat === "td" ? { type: "td", pid: d.pid } : { type: "prop", pid: d.pid, stat: d.stat, dir: d.dir, line: +d.line });
     });
-    $("legTable").addEventListener("click", (e) => {
-      const b = e.target.closest(".rm"); if (!b) return;
-      legs.splice(+b.dataset.i, 1); renderParlay();
-    });
-    $("sgpCards").addEventListener("change", (e) => { if (e.target.id === "bookOdds") { bookOdds = e.target.value; renderParlay(); } });
+
   }
   function fromHash() {
     const m = location.hash.match(/^#([A-Z]{2,3})@([A-Z]{2,3})(?:\/(\d+))?/);
@@ -283,10 +279,10 @@
       const [a, h] = b.game.split("@");
       return `<div class="td-bet"><div class="gm">${a} @ ${h} · ${new Date(b.commence).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</div>
         <div class="bt">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${betText(b)}</span>` : betText(b)} ${conf(b.conf)}</div>
-        <div class="why"><b>${b.price > 0 ? "+" + b.price : b.price}</b> at ${b.book}. Model gives it <b>${Math.round(b.p * 100)}%</b> vs. the book's ${Math.round(b.p_implied * 100)}%.</div></div>`;
+        <div class="why"><b>${b.price > 0 ? "+" + b.price : b.price}</b> at ${b.book}. Model gives it <b>${Math.round(b.p * 100)}%</b> vs. the book's ${Math.round(b.p_implied * 100)}%. ${b.pid || b.kind !== "prop" ? legBtn(legFromBet(b), "+ slip") : ""}</div></div>`;
     }).join("")}</div></div>` : "";
     // games by day
-    const pickHtml = (k, v, label, sub) => `<div class="tg-pick"><div class="k">${k}</div><div class="v">${v}</div>${label ? conf(label) : ""}${sub ? `<div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">${sub}</div>` : ""}</div>`;
+    const pickHtml = (k, v, label, sub, leg) => `<div class="tg-pick"><div class="k">${k}${leg ? legBtn(leg) : ""}</div><div class="v">${v}</div>${label ? conf(label) : ""}${sub ? `<div class="k" style="margin-top:3px;text-transform:none;letter-spacing:0">${sub}</div>` : ""}</div>`;
     const wxBadge = (g) => {
       const w = g.weather; if (!w) return "";
       if (w.source === "indoor") return `<span class="tg-wx">🏟️ indoors</span>`;
@@ -302,14 +298,14 @@
           <div class="tg-team h" style="color:${col(H)}">${H}<small>${g.pts_home.toFixed(0)} pts · ${Math.round(g.p_home * 100)}%</small></div></div>
         <div class="tg-wp"><div style="flex:${pa};background:${col(A)}"></div><div style="flex:${g.p_home};background:${col(H)}"></div></div>
         <div class="tg-picks">
-          ${pickHtml("Winner", `${g.winner.team} ${Math.round(g.winner.p * 100)}%`, g.winner.label)}
-          ${sp ? pickHtml("Spread", `${sp.team} ${sp.line > 0 ? "+" : ""}${sp.line}`, sp.label, `${Math.round(sp.p * 100)}% to cover`) : pickHtml("Spread", "–")}
-          ${tp ? pickHtml("Total", `${tp.side === "over" ? "Over" : "Under"} ${tp.line}`, tp.label, `proj ${g.total.toFixed(0)} · ${Math.round(tp.p * 100)}%`) : pickHtml("Total", g.total.toFixed(0))}
+          ${pickHtml("Winner", `${g.winner.team} ${Math.round(g.winner.p * 100)}%`, g.winner.label, "", { game: g.game, type: "ml", team: g.winner.team })}
+          ${sp ? pickHtml("Spread", `${sp.team} ${sp.line > 0 ? "+" : ""}${sp.line}`, sp.label, `${Math.round(sp.p * 100)}% to cover`, { game: g.game, type: "spread", team: sp.team, line: sp.line, price: sp.price, book: sp.book }) : pickHtml("Spread", "–")}
+          ${tp ? pickHtml("Total", `${tp.side === "over" ? "Over" : "Under"} ${tp.line}`, tp.label, `proj ${g.total.toFixed(0)} · ${Math.round(tp.p * 100)}%`, { game: g.game, type: "total", dir: tp.side, line: tp.line, price: tp.price, book: tp.book }) : pickHtml("Total", g.total.toFixed(0))}
         </div>
         <div class="tg-text">${g.preview}</div>
         <details class="tg-why"><summary>Why? ▸</summary><ul>${g.reasons.map((r) => `<li><span>${r.icon}</span><span>${r.text}</span></li>`).join("")}</ul></details>
         ${g.watch.length ? `<div class="tg-watch"><span class="dim">Players to watch:</span>${g.watch.map((w) => `<span class="chip"><span class="plink" data-pid="${w.id}" data-stat="fp">${w.name}</span> <span class="dim">${w.ppr.toFixed(1)} pts</span></span>`).join("")}</div>` : ""}
-        ${g.best_bet ? `<div class="tg-watch"><span class="dim">Best bet:</span> <span>${g.best_bet.pid ? `<span class="plink" data-pid="${g.best_bet.pid}" data-stat="${g.best_bet.stat}" data-line="${g.best_bet.line}">${g.best_bet.text}</span>` : g.best_bet.text} <b>${g.best_bet.price > 0 ? "+" + g.best_bet.price : g.best_bet.price}</b></span> ${conf(g.best_bet.conf)}</div>` : ""}
+        ${g.best_bet ? `<div class="tg-watch"><span class="dim">Best bet:</span> <span>${g.best_bet.pid ? `<span class="plink" data-pid="${g.best_bet.pid}" data-stat="${g.best_bet.stat}" data-line="${g.best_bet.line}">${g.best_bet.text}</span>` : g.best_bet.text} <b>${g.best_bet.price > 0 ? "+" + g.best_bet.price : g.best_bet.price}</b></span> ${conf(g.best_bet.conf)} ${legBtn(legFromBet(g.best_bet), "+ slip")}</div>` : ""}
         <div class="tg-foot"><button data-go="watch" data-a="${A}" data-h="${H}">▶ Watch a sim</button><button data-go="proj" data-a="${A}" data-h="${H}">Props</button><button data-go="edges" data-a="${A}" data-h="${H}">Odds</button><button data-go="live" data-a="${A}" data-h="${H}">Game day</button></div>
       </div>`;
     }).join("")}</div>`).join("");
@@ -930,7 +926,7 @@
     $("projOut").classList.remove("hidden");
     renderProps();
     renderLegInputs();
-    renderParlay();
+    renderSlip();
   }
 
   function hist(svg, data, lo, hi, mark, label) {
@@ -1017,27 +1013,39 @@
     if ($("lgStat")) leg.stat = v("lgStat");
     addLeg(leg);
   }
+  // ---------------- bet slip (all games) ----------------
+  // A leg: {game:"AWY@HOM", type: ml|spread|total|teamtotal|prop|td, team, dir, line, pid, stat, price?, book?}
+  let slip = [];
+  const slipCache = {};   // game -> summarized sims for legs outside the projections tab
+  let slipOpen = false, slipBusy = false;
+  function saveSlip() { store.set("slip", slip); }
+  function legKey(l) { return [l.game, l.type, l.team || "", l.dir || "", l.line == null ? "" : l.line, l.pid || "", l.stat || ""].join("|"); }
   function addLeg(leg) {
-    if (legs.length >= 10) return;
-    legs.push(leg); renderParlay();
-    document.querySelector(".sgp").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    leg = Object.assign({ game: `${cur.away}@${cur.home}` }, leg);
+    if (slip.some((x) => legKey(x) === legKey(leg))) { openSlip(); flashSlip(); return; }
+    if (slip.length >= 12) { alertSlip("Bet slip is full (12 legs)."); return; }
+    slip.push(leg); saveSlip(); openSlip(); renderSlip(); flashSlip();
+  }
+  function nameOf(pid) {
+    for (const t in model.teams) { const p = model.teams[t].players.find((x) => x.id === pid); if (p) return p.name; }
+    return (plogs && plogs[pid] && plogs[pid].name) || pid;
   }
   function legLabel(l) {
-    const P = (id) => (projResult.players[id] || { name: id }).name;
     const sgn = (x) => (x > 0 ? "+" + x : "" + x);
     switch (l.type) {
       case "ml": return `${l.team} to win`;
       case "spread": return `${l.team} ${sgn(l.line)}`;
-      case "total": return `Game ${l.dir} ${l.line}`;
+      case "total": return `${l.dir === "over" ? "Over" : "Under"} ${l.line} total`;
       case "teamtotal": return `${l.team} ${l.dir} ${l.line} pts`;
-      case "prop": return `${P(l.pid)} ${l.dir} ${l.line} ${STAT_NAMES[l.stat]}`;
-      case "td": return `${P(l.pid)} anytime TD`;
+      case "prop": return `${nameOf(l.pid)} ${l.dir} ${l.line} ${STAT_NAMES[l.stat] || l.stat}`;
+      case "td": return `${nameOf(l.pid)} anytime TD`;
     }
+    return "?";
   }
-  function legHits(l) {               // 1/0 per simulated game, in sim order
-    const r = projResult, n = r.n, out = new Uint8Array(n);
-    const pts = (team, i) => (team === cur.home ? r.home[i] : r.away[i]);
-    const opp = (team) => (team === cur.home ? cur.away : cur.home);
+  function legHits(l, r, away, home) {     // 1/0 per simulated game, in sim order
+    const n = r.n, out = new Uint8Array(n);
+    const pts = (team, i) => (team === home ? r.home[i] : r.away[i]);
+    const opp = (team) => (team === home ? away : home);
     const pl = r.players[l.pid];
     for (let i = 0; i < n; i++) {
       let h = false;
@@ -1046,37 +1054,120 @@
         case "spread": h = pts(l.team, i) - pts(opp(l.team), i) + l.line > 0; break;
         case "total": { const t = r.home[i] + r.away[i]; h = l.dir === "over" ? t > l.line : t < l.line; break; }
         case "teamtotal": { const t = pts(l.team, i); h = l.dir === "over" ? t > l.line : t < l.line; break; }
-        case "prop": { const v = pl ? pl.r[l.stat][i] : 0; h = l.dir === "over" ? v > l.line : v < l.line; break; }
+        case "prop": { const v = pl && pl.r[l.stat] ? pl.r[l.stat][i] : 0; h = l.dir === "over" ? v > l.line : v < l.line; break; }
         case "td": h = pl ? pl.r.td[i] >= 1 : false; break;
       }
       out[i] = h ? 1 : 0;
     }
     return out;
   }
-  function decimalFromAmerican(a) { a = +a; if (!a) return null; return a > 0 ? 1 + a / 100 : 1 + 100 / -a; }
-  function renderParlay() {
-    if (!projResult) return;
-    const n = projResult.n;
-    if (!legs.length) { $("legTable").innerHTML = ""; $("sgpCards").innerHTML = `<div class="card"><div class="k">No legs yet</div><div class="s">Add 2+ legs to price a parlay</div></div>`; return; }
-    const hits = legs.map(legHits);
-    const probs = hits.map((h) => h.reduce((a, b) => a + b, 0) / n);
-    let all = 0;
-    for (let i = 0; i < n; i++) { let ok = 1; for (const h of hits) if (!h[i]) { ok = 0; break; } all += ok; }
-    const joint = all / n, indep = probs.reduce((a, b) => a * b, 1);
-    $("legTable").innerHTML = `<tr><th>Leg</th><th></th><th>Hit %</th><th>Fair odds</th><th></th></tr>` +
-      legs.map((l, i) => `<tr><td>${l.pid ? `<span class="plink" data-pid="${l.pid}" data-stat="${l.type === "td" ? "td" : l.stat}" data-line="${l.line != null ? l.line : ""}">${legLabel(l)}</span>` : legLabel(l)}</td><td></td><td>${pct(probs[i])}</td><td>${american(probs[i])}</td><td><button class="rm" data-i="${i}" title="Remove leg">✕</button></td></tr>`).join("");
-    const corr = indep > 0 ? joint / indep : 0;
-    const dec = decimalFromAmerican(bookOdds);
-    const ev = dec ? joint * dec - 1 : null;
-    const cards = [
-      ["All legs hit", pct(joint), `${all.toLocaleString()} of ${n.toLocaleString()} sims`],
-      ["Fair parlay odds", american(joint), joint ? `decimal ${(1 / joint).toFixed(2)}` : "never hit"],
-      ["If legs were independent", pct(indep), `fair ${american(indep)}`],
-      ["Correlation", legs.length > 1 ? corr.toFixed(2) + "×" : "–", legs.length > 1 ? (corr > 1.05 ? "legs help each other" : corr < 0.95 ? "legs work against each other" : "roughly independent") : "add another leg"],
-    ];
-    $("sgpCards").innerHTML = cards.map(([k, v, s]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("") +
-      `<div class="card"><div class="k">Book's parlay odds</div><input id="bookOdds" type="text" placeholder="+450" value="${bookOdds}">
-        <div class="s ${ev == null ? "" : ev > 0 ? "ev-pos" : "ev-neg"}">${ev == null ? "enter odds to see expected value" : `model EV ${ev > 0 ? "+" : ""}${(ev * 100).toFixed(1)}% per $1`}</div></div>`;
+  function decimalFromAmerican(a) { a = +String(a).replace(/[^0-9+-.]/g, ""); if (!a || Math.abs(a) < 100) return null; return a > 0 ? 1 + a / 100 : 1 + 100 / -a; }
+  function americanFromDecimal(d) { return d >= 2 ? "+" + Math.round((d - 1) * 100) : "" + Math.round(-100 / (d - 1)); }
+  function simsFor(game) {
+    const [a, h] = game.split("@");
+    if (projResult && !projStale && cur.away === a && cur.home === h) return projResult;    // your projections, with your tweaks
+    if (!slipCache[game]) {
+      const g = model.schedule.find((x) => x.away === a && x.home === h && x.home_score == null) || model.schedule.find((x) => x.away === a && x.home === h);
+      const w = g && g.weather && g.weather.features ? g.weather.features : null;
+      slipCache[game] = NFLSim.summarize(NFLSim.simulateMany(model, { away: a, home: h, seed: 2468, weather: w, neutral: g && g.neutral }, 3000));
+    }
+    return slipCache[game];
+  }
+  function priceSlip() {
+    const games = [...new Set(slip.map((l) => l.game))];
+    const legP = new Map(), perGame = [];
+    for (const game of games) {
+      const [a, h] = game.split("@"), r = simsFor(game), gl = slip.filter((l) => l.game === game);
+      const hits = gl.map((l) => legHits(l, r, a, h));
+      gl.forEach((l, i) => legP.set(l, hits[i].reduce((x, y) => x + y, 0) / r.n));
+      let all = 0; for (let i = 0; i < r.n; i++) { let ok = 1; for (const x of hits) if (!x[i]) { ok = 0; break; } all += ok; }
+      perGame.push({ game, joint: all / r.n, indep: gl.reduce((p, l) => p * legP.get(l), 1), legs: gl.length });
+    }
+    const joint = perGame.reduce((p, g) => p * g.joint, 1), indep = perGame.reduce((p, g) => p * g.indep, 1);
+    return { legP, perGame, joint, indep };
+  }
+  function openSlip() { slipOpen = true; document.body.classList.add("slip-open"); store.set("slipOpen", true); }
+  function closeSlip() { slipOpen = false; document.body.classList.remove("slip-open"); store.set("slipOpen", false); }
+  function flashSlip() { const el = $("slip"); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+  function alertSlip(msg) { const m = $("slipMsg"); if (m) { m.textContent = msg; setTimeout(() => (m.textContent = ""), 2500); } }
+  function renderSlip() {
+    $("slipCount").textContent = slip.length; $("slipFab").querySelector("b").textContent = slip.length;
+    $("slipFab").classList.toggle("has", slip.length > 0);
+    const body = $("slipBody");
+    if (!slip.length) {
+      body.innerHTML = `<div class="sl-empty">Your slip is empty.<br><br>Add legs from any game with the <b>+</b> buttons on the <b>Edge board</b>, the <b>Today</b> page, or the prop table in <b>Projections</b>.</div>`;
+      return;
+    }
+    if (!model) return;
+    body.innerHTML = `<div class="sl-empty">Pricing…</div>`;
+    slipBusy = true;
+    setTimeout(() => {
+      const P = priceSlip(); slipBusy = false;
+      const priced = slip.every((l) => l.price != null);
+      const booksDec = priced ? slip.reduce((d, l) => d * decimalFromAmerican(l.price), 1) : null;
+      const userDec = decimalFromAmerican(slipOdds) || booksDec;
+      const ev = userDec ? P.joint * userDec - 1 : null;
+      const corr = P.indep > 0 ? P.joint / P.indep : 1;
+      const games = [...new Set(slip.map((l) => l.game))];
+      const legRow = (l) => {
+        const idx = slip.indexOf(l), p = P.legP.get(l);
+        const lab = l.pid ? `<span class="plink" data-pid="${l.pid}" data-stat="${l.type === "td" ? "td" : l.stat}" data-line="${l.line != null ? l.line : ""}">${legLabel(l)}</span>` : legLabel(l);
+        return `<div class="sl-leg"><div class="sl-l">${lab}<div class="sl-sub">model ${Math.round(p * 100)}%${l.price != null ? ` · ${l.price > 0 ? "+" + l.price : l.price}${l.book ? " " + l.book : ""}` : ""}</div></div><button class="sl-x" data-rm="${idx}" title="Remove">✕</button></div>`;
+      };
+      body.innerHTML = games.map((game) => {
+        const [a, h] = game.split("@"), pg = P.perGame.find((x) => x.game === game);
+        return `<div class="sl-game"><div class="sl-gh"><span><span style="color:${col(a)}">${a}</span> @ <span style="color:${col(h)}">${h}</span></span>${pg.legs > 1 ? `<span class="sl-sgp" title="Same-game legs are priced together">SGP ${Math.round(pg.joint * 100)}%</span>` : ""}</div>${slip.filter((l) => l.game === game).map(legRow).join("")}</div>`;
+      }).join("") + `
+        <div class="sl-sum">
+          <div class="sl-row big"><span>All ${slip.length} leg${slip.length === 1 ? "" : "s"} hit</span><b>${P.joint >= 0.001 ? (P.joint * 100).toFixed(P.joint < 0.1 ? 1 : 0) + "%" : "<0.1%"}</b></div>
+          <div class="sl-row"><span>Fair odds</span><b>${P.joint > 0 ? americanFromDecimal(1 / P.joint) : "–"}</b></div>
+          ${slip.length > 1 ? `<div class="sl-row"><span>If legs were independent</span><span>${(P.indep * 100).toFixed(1)}%</span></div>
+          <div class="sl-row"><span>Correlation</span><span class="${corr > 1.05 ? "ev-pos" : corr < 0.95 ? "ev-neg" : ""}">${corr.toFixed(2)}× ${corr > 1.05 ? "helps" : corr < 0.95 ? "hurts" : ""}</span></div>` : ""}
+          ${booksDec ? `<div class="sl-row"><span>Legs' prices combined</span><span>${americanFromDecimal(booksDec)}</span></div>` : ""}
+          <div class="sl-row"><span>Book's parlay odds</span><input id="slipOddsIn" placeholder="${booksDec ? americanFromDecimal(booksDec) : "+450"}" value="${slipOdds}"></div>
+          <div class="sl-row"><span>Stake $</span><input id="slipStakeIn" type="number" min="1" value="${slipStake}"></div>
+          ${userDec ? `<div class="sl-row"><span>Pays</span><b>$${(slipStake * userDec).toFixed(2)}</b></div>
+          <div class="sl-row"><span>Model EV</span><b class="${ev > 0 ? "ev-pos" : "ev-neg"}">${ev > 0 ? "+" : ""}${(ev * 100).toFixed(1)}%</b></div>` : ""}
+          <div class="sl-note">Same-game legs are priced together from the simulations; different games are treated as independent. Books often price same-game parlays differently, so enter your book's actual odds.</div>
+        </div>`;
+    }, 20);
+  }
+  function slipText() {
+    const P = priceSlip();
+    return slip.map((l) => `${l.game.replace("@", " @ ")}: ${legLabel(l)}${l.price != null ? ` (${l.price > 0 ? "+" + l.price : l.price})` : ""} — model ${Math.round(P.legP.get(l) * 100)}%`).join("\n") +
+      `\nAll hit: ${(P.joint * 100).toFixed(1)}% · fair ${P.joint > 0 ? americanFromDecimal(1 / P.joint) : "–"} (Gridiron Sim)`;
+  }
+  function initSlip() {
+    slip = store.get("slip", []) || [];
+    // drop legs for games that are already final
+    slip = slip.filter((l) => { const [a, h] = String(l.game).split("@"); const g = model.schedule.find((x) => x.away === a && x.home === h && x.home_score == null); return !!g; });
+    saveSlip();
+    if (store.get("slipOpen", false) && slip.length) openSlip();
+    $("slipFab").onclick = () => (slipOpen ? closeSlip() : openSlip());
+    $("slipClose").onclick = closeSlip;
+    $("slipClear").onclick = () => { slip = []; slipOdds = ""; saveSlip(); renderSlip(); };
+    $("slipCopy").onclick = () => { if (!slip.length) return; navigator.clipboard && navigator.clipboard.writeText(slipText()); alertSlip("Copied to clipboard"); };
+    $("slipBody").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b) { slip.splice(+b.dataset.rm, 1); saveSlip(); renderSlip(); } });
+    $("slipBody").addEventListener("change", (e) => {
+      if (e.target.id === "slipOddsIn") { slipOdds = e.target.value; renderSlip(); }
+      if (e.target.id === "slipStakeIn") { slipStake = Math.max(1, +e.target.value || 10); renderSlip(); }
+    });
+    // any "+ slip" button anywhere on the site
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-leg]"); if (!b) return;
+      e.preventDefault(); e.stopPropagation();
+      addLeg(JSON.parse(decodeURIComponent(b.dataset.leg)));
+    }, true);
+    renderSlip();
+  }
+  const legBtn = (leg, label = "+", title = "Add to bet slip") => `<button class="addslip" data-leg="${encodeURIComponent(JSON.stringify(leg))}" title="${title}">${label}</button>`;
+  function legFromBet(b) {
+    const base = { game: b.game, price: b.price, book: b.book };
+    if (b.kind === "ml") return Object.assign(base, { type: "ml", team: b.side });
+    if (b.kind === "spread") return Object.assign(base, { type: "spread", team: b.side, line: b.line });
+    if (b.kind === "total") return Object.assign(base, { type: "total", dir: b.side, line: b.line });
+    if (b.stat === "td") return Object.assign(base, { type: "td", pid: b.pid });
+    return Object.assign(base, { type: "prop", pid: b.pid, stat: b.stat, dir: b.side, line: b.line });
   }
 
   // ---------------- edge board ----------------
@@ -1114,11 +1205,11 @@
       if (tab) document.querySelector(`.tab[data-tab="${tab}"]`).click();
     };
     $("edGames").addEventListener("click", (e) => {
-      if (e.target.closest(".plink")) return;
+      if (e.target.closest(".plink") || e.target.closest("[data-leg]")) return;
       const open = e.target.closest(".eg-open"); if (open) return goGame(open, "watch");
       const head = e.target.closest(".eg-head"); if (head) goGame(head);
     });
-    $("edTop").addEventListener("click", (e) => { if (e.target.closest(".plink")) return; const c = e.target.closest(".topcard"); if (c) goGame(c); });
+    $("edTop").addEventListener("click", (e) => { if (e.target.closest(".plink") || e.target.closest("[data-leg]")) return; const c = e.target.closest(".topcard"); if (c) goGame(c); });
   }
   function renderEdges() {
     const e = edges; if (!e) return;
@@ -1153,7 +1244,7 @@
       return `<div class="topcard" style="--tier:${b.ev > 0.2 ? "var(--accent)" : "var(--good)"}" data-a="${g.away}" data-h="${g.home}" title="Open this game">
         <span class="rank">#${i + 1}</span><div class="tc-game">${g.away} @ ${g.home} · ${fmtT(b.commence)}</div>
         <div class="tc-bet">${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
-        <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span>${conf(betConf(b))}<span class="tc-ev">${signed(b.ev)}%</span></div>
+        <div class="tc-row"><span class="price">${priceTxt(b.price)}</span><span class="bookpill">${b.book || ""}</span>${conf(betConf(b))}${legBtn(legFromBet(b), "+ slip")}<span class="tc-ev">${signed(b.ev)}%</span></div>
         ${bar(b)}<div class="tc-cap"><span>Model ${(b.p * 100).toFixed(0)}%</span><span style="color:#f2c94c">▼ Book ${(b.p_implied * 100).toFixed(0)}%</span><span>EV</span></div></div>`;
     }).join("");
 
@@ -1175,7 +1266,7 @@
           <button class="eg-open" data-a="${g.away}" data-h="${g.home}">Simulate ▸</button></div>
         ${rows.length ? hdr + rows.map((b) => `<div class="erow">
             <div class="ebet"><span class="tag">${tag(b)}</span>${b.pid ? `<span class="plink" data-pid="${b.pid}" data-stat="${b.stat}" data-line="${b.line}">${b.label}</span>` : b.label}${flags(b)}</div>
-            <div><span class="price">${priceTxt(b.price)}</span> <span class="bookpill">${b.book || ""}</span></div>
+            <div><span class="price">${priceTxt(b.price)}</span> <span class="bookpill">${b.book || ""}</span> ${b.pid || b.kind !== "prop" ? legBtn(legFromBet(b)) : ""}</div>
             <div class="eprob">${bar(b)}<div class="lbl"><span>model ${(b.p * 100).toFixed(1)}%</span><span>book ${(b.p_implied * 100).toFixed(1)}%</span></div></div>
             <div class="eedge ${b.p >= b.p_implied ? "edge-hi" : "edge-lo"}">${signed(b.p - b.p_implied)}</div>
             <div class="evb t${tier(b.ev)}">${signed(b.ev)}% ${conf(betConf(b))}</div>

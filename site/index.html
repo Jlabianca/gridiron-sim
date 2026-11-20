@@ -160,8 +160,8 @@
       <table class="props" id="propTable"></table>
 
       <div class="sgp">
-        <h3>Same-game parlay builder</h3>
-        <p class="dim">Add legs below, or with the <b>+O</b> / <b>+U</b> / <b>+</b> buttons in the prop table. The model counts how often <i>every</i> leg hits in the same simulated game, so legs that go together (a team winning and its running back going over) are priced as a combination instead of being multiplied as if they were independent.</p>
+        <h3>Add to your bet slip</h3>
+        <p class="dim">Add legs below, or with the <b>+O</b> / <b>+U</b> / <b>+</b> buttons in the prop table. Legs from the same game are priced together, so legs that go together (a team winning and its running back going over) count as a combination instead of being treated as independent.</p>
         <div class="legadd">
           <select id="legType">
             <option value="ml">Moneyline</option><option value="spread">Spread</option><option value="total">Game total</option>
@@ -170,8 +170,7 @@
           <span id="legInputs"></span>
           <button id="legAdd" class="primary">Add leg</button>
         </div>
-        <table class="props legs" id="legTable"></table>
-        <div class="cards" id="sgpCards"></div>
+        <p class="dim" style="margin:4px 0 0">Legs go into your <b>bet slip</b> on the right, which keeps legs from every game together.</p>
       </div>
     </div>
     <p class="note">Probabilities come from repeating the simulated game thousands of times. The model is a simple play-level simulation and has not been proven to beat the market — treat edges as leads to research, not as bets.</p>
@@ -239,6 +238,12 @@
   </section>
 </main>
 
+<aside id="slip" class="slip" aria-label="Bet slip">
+  <div class="sl-head"><span>🧾 Bet slip <span class="sl-n" id="slipCount">0</span></span><span><button id="slipCopy" title="Copy slip as text">Copy</button><button id="slipClear" title="Remove all legs">Clear</button><button id="slipClose" title="Hide">✕</button></span></div>
+  <div class="sl-msg" id="slipMsg"></div>
+  <div class="sl-body" id="slipBody"></div>
+</aside>
+<button id="slipFab" class="slip-fab" title="Bet slip">🧾 <b>0</b></button>
 <div id="pdBack" class="pd-back hidden"></div>
 <aside id="pd" class="pd hidden" aria-label="Player details"></aside>
 
