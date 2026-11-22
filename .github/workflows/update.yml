@@ -2,7 +2,7 @@ name: Refresh data and deploy
 
 on:
   schedule:
-    - cron: "17 11 * * *"   # daily, ~7am ET: picks up new games, injury reports and lines
+    - cron: "37 5 * * *"    # daily ~1:37am ET; GitHub often starts scheduled runs hours late, so this usually lands by morning
   workflow_dispatch:         # "Run workflow" button in the Actions tab
   push:
     branches: [main]
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -64,4 +64,11 @@ jobs:
         with:
           path: site
       - id: deployment
+        continue-on-error: true   # GitHub's Pages service sometimes fails to find the upload; retry once below
+        uses: actions/deploy-pages@v4
+      - name: Retry deploy if GitHub's Pages service hiccuped
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4

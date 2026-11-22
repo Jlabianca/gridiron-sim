@@ -50,8 +50,9 @@
   }).catch((e) => { $("dataLine").textContent = "Could not load data/model.json — serve this folder over http (see README). " + e; });
 
   function defaultGame() {
-    const wk = model.schedule.filter((g) => g.week === model.target_week);
-    return wk[0] || model.schedule[model.schedule.length - 1];
+    // the next game that hasn't been played yet (this week first)
+    const left = model.schedule.filter((g) => g.home_score == null).sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+    return left.find((g) => g.week === model.target_week) || left[0] || model.schedule[model.schedule.length - 1];
   }
 
   // ---------------- picker ----------------
@@ -1022,6 +1023,8 @@
   function legKey(l) { return [l.game, l.type, l.team || "", l.dir || "", l.line == null ? "" : l.line, l.pid || "", l.stat || ""].join("|"); }
   function addLeg(leg) {
     leg = Object.assign({ game: `${cur.away}@${cur.home}` }, leg);
+    const [la, lh] = leg.game.split("@");
+    if (!model.schedule.some((x) => x.away === la && x.home === lh && x.home_score == null)) { openSlip(); alertSlip(`${la} @ ${lh} has already been played, so it can't go in the slip.`); return; }
     if (slip.some((x) => legKey(x) === legKey(leg))) { openSlip(); flashSlip(); return; }
     if (slip.length >= 12) { alertSlip("Bet slip is full (12 legs)."); return; }
     slip.push(leg); saveSlip(); openSlip(); renderSlip(); flashSlip();
