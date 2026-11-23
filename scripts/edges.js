@@ -12,9 +12,9 @@ const odds = JSON.parse(fs.readFileSync(oddsPath));
 
 const STAT = { player_pass_yds: "py", player_rush_yds: "ry", player_reception_yds: "recy", player_receptions: "rec",
   player_anytime_td: "td", player_pass_tds: "ptd", player_pass_completions: "pc", player_rush_attempts: "ra",
-  player_pass_interceptions: "pint", player_rush_reception_yds: "rry" };
+  player_pass_interceptions: "pint", player_rush_reception_yds: "rry", player_pass_rush_yds: "pry" };
 const LABEL = { py: "pass yds", ry: "rush yds", recy: "rec yds", rec: "receptions", td: "anytime TD", ptd: "pass TDs",
-  pc: "completions", ra: "rush att", pint: "INTs", rry: "rush+rec yds" };
+  pc: "completions", ra: "rush att", pint: "INTs", rry: "rush+rec yds", pry: "pass+rush yds" };
 const norm = (s) => String(s || "").toLowerCase().replace(/[.'’-]/g, "").replace(/\b(jr|sr|ii|iii|iv|v)\b/g, "").replace(/\s+/g, " ").trim();
 const dec = (a) => (a == null ? null : a > 0 ? 1 + a / 100 : 1 + 100 / -a);
 const implied = (a) => (a == null ? null : 1 / dec(a));

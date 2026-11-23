@@ -643,8 +643,8 @@
       const p = agg.players[id], s = p.stats, n = agg.n;
       const out = { id, name: p.name, short: p.short, pos: p.pos, team: p.team, d: {}, r: {} };
       for (const k of SUM_KEYS) out.r[k] = Int16Array.from(s[k]);
-      out.r.rry = new Int16Array(n); out.r.td = new Int16Array(n);
-      for (let i = 0; i < n; i++) { out.r.rry[i] = s.ry[i] + s.recy[i]; out.r.td[i] = s.rtd[i] + s.rectd[i]; }
+      out.r.rry = new Int16Array(n); out.r.td = new Int16Array(n); out.r.pry = new Int16Array(n);
+      for (let i = 0; i < n; i++) { out.r.rry[i] = s.ry[i] + s.recy[i]; out.r.td[i] = s.rtd[i] + s.rectd[i]; out.r.pry[i] = s.py[i] + s.ry[i]; }
       for (const k in out.r) out.d[k] = Int16Array.from(out.r[k]).sort();
       players[id] = out;
     }

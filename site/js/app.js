@@ -952,8 +952,8 @@
   function renderProps() {
     if (!projResult) return;
     const k = $("statSel").value, tf = $("teamFilter").value;
-    const ps = Object.values(projResult.players).filter((p) => (!tf || p.team === tf));
-    const minMean = { py: 20, pc: 2, ptd: 0.05, pint: 0.05, ra: 1, ry: 5, rec: 0.5, recy: 5, rry: 5, td: 0.03, pts: 1 }[k];
+    const ps = Object.values(projResult.players).filter((p) => (!tf || p.team === tf) && (k !== "pry" || p.pos === "QB"));
+    const minMean = { pry: 20, py: 20, pc: 2, ptd: 0.05, pint: 0.05, ra: 1, ry: 5, rec: 0.5, recy: 5, rry: 5, td: 0.03, pts: 1 }[k];
     const rows = ps.map((p) => ({ p, d: p.d[k], m: meanOf(p.d[k]) })).filter((x) => x.m >= minMean).sort((a, b) => b.m - a.m);
     if (k === "td") {
       $("propTable").innerHTML = `<tr><th>Player</th><th>Team</th><th>Avg TDs</th><th>Anytime TD</th><th>Fair odds</th><th>2+ TDs</th><th>Parlay</th></tr>` +
@@ -981,7 +981,7 @@
   }
 
   // ---------------- parlay builder ----------------
-  const STAT_NAMES = { py: "pass yds", pc: "completions", ptd: "pass TDs", pint: "INTs", ra: "rush att", ry: "rush yds", rec: "receptions", recy: "rec yds", rry: "rush+rec yds", pts: "kicker pts" };
+  const STAT_NAMES = { pry: "pass+rush yds", py: "pass yds", pc: "completions", ptd: "pass TDs", pint: "INTs", ra: "rush att", ry: "rush yds", rec: "receptions", recy: "rec yds", rry: "rush+rec yds", pts: "kicker pts" };
   function legPlayers() {
     return Object.values(projResult.players).filter((p) => p.d.py[p.d.py.length - 1] > 0 || p.d.rry[p.d.rry.length - 1] > 0 || p.d.pts[p.d.pts.length - 1] > 0)
       .sort((a, b) => (a.team === b.team ? 0 : a.team === cur.away ? -1 : 1) || meanOf(b.r.rry) + meanOf(b.r.py) - meanOf(a.r.rry) - meanOf(a.r.py));
@@ -1378,9 +1378,9 @@
   // ---------------- player panel ----------------
   let plogs = null, plogsLoading = null;
   const pd = { pid: null, stat: null, line: null, range: "L10", cmp: null, picking: false };
-  const PSTAT = { fp: "Fantasy pts", py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
+  const PSTAT = { fp: "Fantasy pts", pry: "Pass+Rush yds", py: "Pass yds", pc: "Completions", ptd: "Pass TD", pint: "INT", ry: "Rush yds", ra: "Carries",
     recy: "Rec yds", rec: "Receptions", tg: "Targets", rry: "Rush+Rec yds", td: "TDs" };
-  const statVal = (e, k) => (k === "fp" ? Math.round(NFLSim.fantasyPoints(e, ft.fmt) * 10) / 10 : k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
+  const statVal = (e, k) => (k === "fp" ? Math.round(NFLSim.fantasyPoints(e, ft.fmt) * 10) / 10 : k === "pry" ? (e.py || 0) + (e.ry || 0) : k === "rry" ? (e.ry || 0) + (e.recy || 0) : k === "td" ? (e.rtd || 0) + (e.rectd || 0) : e[k] || 0);
   const projCache = {};
   function getLogs() {
     if (!plogsLoading) plogsLoading = fetch("data/players.json?" + (model ? model.generated : "")).then((r) => r.json()).then((d) => (plogs = d)).catch(() => (plogs = {}));
@@ -1471,7 +1471,7 @@
   function renderPlayerCompare() {
     const ids = [pd.pid, pd.cmp], metas = ids.map(playerMeta), colors = [col(metas[0].team), col(metas[1].team) === col(metas[0].team) ? "#e8eef5" : col(metas[1].team)];
     const posOf = (m, id) => m.pos || (plogs[id] || {}).pos || "";
-    const statsAll = ["fp", "py", "pc", "ptd", "pint", "ry", "ra", "recy", "rec", "tg", "rry", "td"];
+    const statsAll = ["fp", "py", "pry", "pc", "ptd", "pint", "ry", "ra", "recy", "rec", "tg", "rry", "td"];
     // only stats that are a real part of at least one player's game (2+ games with a nonzero value)
     const avail = statsAll.filter((k) => ids.some((id) => ((plogs[id] && plogs[id].log) || []).filter((e) => statVal(e, k) > 0).length >= 2));
     if (!pd.stat || !avail.includes(pd.stat)) pd.stat = avail.includes("fp") ? "fp" : avail[0];
@@ -1542,7 +1542,7 @@
   function renderPlayerSingle() {
     const pid = pd.pid, meta = playerMeta(pid), L = (plogs[pid] && plogs[pid].log) || [];
     const pos = meta.pos || (plogs[pid] || {}).pos || "";
-    const statsFor = pos === "QB" ? ["py", "pc", "ptd", "pint", "ry", "fp"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td", "fp"] : ["recy", "rec", "tg", "rry", "td", "fp"];
+    const statsFor = pos === "QB" ? ["py", "pry", "pc", "ptd", "pint", "ry", "fp"] : pos === "RB" ? ["ry", "ra", "recy", "rec", "rry", "td", "fp"] : ["recy", "rec", "tg", "rry", "td", "fp"];
     const avail = statsFor.filter((k) => L.some((e) => statVal(e, k) > 0));
     if (!pd.stat || !PSTAT[pd.stat]) pd.stat = avail[0] || statsFor[0];
     const k = pd.stat;
@@ -1617,7 +1617,7 @@
     const rows = L.slice().reverse().map((e) => {
       const v = statVal(e, k), res = e.pf > e.pa_ ? "W" : e.pf < e.pa_ ? "L" : "T";
       return `<tr><td>${e.s !== season ? "'" + String(e.s).slice(2) + " " : ""}W${e.w}</td><td>${e.h ? "vs" : "@"} <span style="color:${col(e.opp)}">${e.opp}</span></td><td>${res} ${e.pf}–${e.pa_}</td>
-        ${cols.map(([c]) => `<td class="${(c === k || (k === "rry" && (c === "ry" || c === "recy"))) ? (v > line ? "hi" : "lo") : ""}">${cell(e, c)}</td>`).join("")}</tr>`;
+        ${cols.map(([c]) => `<td class="${(c === k || (k === "rry" && (c === "ry" || c === "recy")) || (k === "pry" && (c === "py" || c === "ry"))) ? (v > line ? "hi" : "lo") : ""}">${cell(e, c)}</td>`).join("")}</tr>`;
     }).join("");
 
     const nx = nextGame(meta.team);
