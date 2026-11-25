@@ -17,11 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  # 1) build all the data and upload the site package
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -63,12 +61,27 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site
-      - id: deployment
-        continue-on-error: true   # GitHub's Pages service sometimes fails to find the upload; retry once below
+
+  # 2) publish it. A separate job (GitHub's recommended setup) so the upload is fully
+  #    finished before publishing starts; retried because GitHub Pages sometimes returns 500s.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.d1.outputs.page_url || steps.d2.outputs.page_url || steps.d3.outputs.page_url }}
+    steps:
+      - id: d1
+        continue-on-error: true
         uses: actions/deploy-pages@v4
-      - name: Retry deploy if GitHub's Pages service hiccuped
-        if: steps.deployment.outcome == 'failure'
-        run: sleep 60
-      - id: deployment_retry
-        if: steps.deployment.outcome == 'failure'
+      - if: steps.d1.outcome == 'failure'
+        run: echo "::warning title=Deploy::GitHub Pages failed on the first try; retrying in 2 minutes" && sleep 120
+      - id: d2
+        if: steps.d1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - if: steps.d1.outcome == 'failure' && steps.d2.outcome == 'failure'
+        run: echo "::warning title=Deploy::second try failed; last retry in 5 minutes" && sleep 300
+      - id: d3
+        if: steps.d1.outcome == 'failure' && steps.d2.outcome == 'failure'
         uses: actions/deploy-pages@v4
